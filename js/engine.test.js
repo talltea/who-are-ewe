@@ -280,6 +280,26 @@
     }
 
     // ------------------------------------------------------------------
+    heading('Flock size limit');
+    {
+      check('the game\'s limit is a positive number', E.MAX_FLOCK_SIZE > 8, 'MAX_FLOCK_SIZE = ' + E.MAX_FLOCK_SIZE);
+      check('flocks have no limit unless given one', E.createFlock({}).room() === Infinity);
+      const f = E.createFlock({ rng: E.mulberry32(6), maxSize: 4 });
+      const ram = f.addSheep({ sex: 'ram' });
+      const ewe = f.addSheep({ sex: 'ewe' });
+      f.addSheep({ sex: 'ewe' });
+      check('room counts down as sheep join', f.room() === 1);
+      f.breed(ram.id, ewe.id);
+      check('a litter can take a nearly full flock a little over', f.room() <= 0 && f.room() >= -2, 'room ' + f.room());
+      let refused = false;
+      try { f.breed(ram.id, ewe.id); } catch (e) { refused = /full/.test(e.message); }
+      check('a full flock can\'t breed', refused);
+      for (const r of f.list()) if (r.id !== ram.id && r.id !== ewe.id) f.remove(r.id);
+      check('removed sheep don\'t count', f.room() === 2);
+      check('after removing some, breeding works again', f.breed(ram.id, ewe.id).event !== undefined);
+    }
+
+    // ------------------------------------------------------------------
     heading('Ruled-out alleles');
     {
       const plainRam = guess(Object.assign({ agouti: ['solid', 'solid'] }, known));

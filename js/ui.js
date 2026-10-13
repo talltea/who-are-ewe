@@ -61,6 +61,8 @@
     lastLitter: null,
     fantasyNotes: true,
     hideInvite: false,
+    showRetired: false,
+    genOpen: {}, // generation -> true/false, where the player opened or closed it
   };
   const fresh = new Map(); // id -> time it arrived, for the highlight
   const FRESH_MS = 2400;
@@ -115,6 +117,14 @@
 
   function retiredText(r) {
     return r.name + ' has been bred ' + plural(r.litters.length, 'time') + ', the most a ' + r.sex + ' can be.';
+  }
+
+  // When the flock reaches E.MAX_FLOCK_SIZE, nothing new can join until some sheep are removed.
+  function fullText() {
+    const n = flock.list().length;
+    const old = flock.list().filter(retired).length;
+    return 'The flock is full: ' + n + ' sheep, the most it can hold. Remove some to make room' +
+      (old ? '. Retired sheep are a good place to start: tick Show retired to find them.' : '.');
   }
 
   // ---------------------------------------------------- picking a pair
@@ -415,7 +425,7 @@
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
       sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir, showRemoved: ui.showRemoved,
-      fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite,
+      fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite, showRetired: ui.showRetired, genOpen: ui.genOpen,
     };
   }
 
@@ -441,7 +451,7 @@
   // Replace the current flock with saved data. Throws if the data is bad.
   function applyData(data) {
     if (!data || data.format !== FILE_FORMAT || !data.flock) throw new Error('Not a sheep sandbox file');
-    const next = E.createFlock({ nameFor });
+    const next = E.createFlock({ nameFor, maxSize: E.MAX_FLOCK_SIZE });
     next.importState(data.flock);
     flock = next;
     notes = sanitizeNotes(data.notes);
@@ -464,6 +474,11 @@
     ui.showRemoved = !!u.showRemoved;
     ui.fantasyNotes = u.fantasyNotes !== false;
     ui.hideInvite = !!u.hideInvite;
+    ui.showRetired = !!u.showRetired;
+    ui.genOpen = {};
+    if (u.genOpen && typeof u.genOpen === 'object') {
+      for (const k of Object.keys(u.genOpen)) if (/^\d+$/.test(k)) ui.genOpen[k] = !!u.genOpen[k];
+    }
     ui.lastLitter = null;
     ui.suggest = false;
     ui.renaming = false;
@@ -487,14 +502,14 @@
     const devGenes = fantasy ? DEV_GENES : [];
     const sexes = ['ewe', 'ram', 'ewe', 'ewe', 'ram', 'ewe', 'ram', 'ewe'];
     for (let attempt = 0; attempt < 80; attempt++) {
-      flock = E.createFlock({ nameFor, fantasy, devGenes });
+      flock = E.createFlock({ nameFor, fantasy, devGenes, maxSize: E.MAX_FLOCK_SIZE });
       const looks = sexes.map(sex => flock.addSheep({ sex }).phenotype);
       const whites = looks.filter(l => l.color === 'white').length;
       if (new Set(looks.map(D.title)).size >= 4 && whites >= 2 && whites <= 4) break;
     }
     notes = {};
     for (const r of flock.list()) noteFor(r.id);
-    Object.assign(ui, { selected: null, side: 'sheep', pen: { ram: null, ewe: null }, lastLitter: null, suggest: false, renaming: false });
+    Object.assign(ui, { selected: null, side: 'sheep', pen: { ram: null, ewe: null }, lastLitter: null, suggest: false, renaming: false, genOpen: {} });
     surpriseCache.clear();
     checks.clear();
   }
@@ -545,8 +560,16 @@
 
   // ------------------------------------------------------------- grid
 
+  // Retired sheep are hidden unless asked for, or unless they're selected, in
+  // the pen, or a parent of the selected sheep.
+  function hiddenRetired(r) {
+    if (ui.showRetired || r.removed || !retired(r)) return false;
+    const sel = ui.selected && flock.get(ui.selected);
+    return r.id !== ui.selected && r.id !== ui.pen.ram && r.id !== ui.pen.ewe && !(sel && (sel.sire === r.id || sel.dam === r.id));
+  }
+
   function visibleSheep() {
-    let list = flock.list({ includeRemoved: ui.showRemoved });
+    let list = flock.list({ includeRemoved: ui.showRemoved }).filter(r => !hiddenRetired(r));
     if (ui.sex !== 'all') list = list.filter(r => r.sex === ui.sex);
     if (ui.allele) {
       const [gene, a] = ui.allele.split(':');
@@ -629,20 +652,75 @@
       '</div>';
   }
 
+  // ------------------------------------------------- generation groups
+  //
+  // Sorted by age or generation, the grid is split into generations. The
+  // newest two start open; older ones fold into one row unless the player
+  // opens them.
+
+  const grouped = () => ui.sort === 'born' || ui.sort === 'gen';
+
+  function genIsOpen(gen, newest) {
+    return gen in ui.genOpen ? ui.genOpen[gen] : gen >= newest - 1;
+  }
+
+  // Make sure a sheep's generation is open, so its card can be seen.
+  function showGen(r) {
+    if (r && grouped()) {
+      const newest = Math.max(...flock.list().map(x => x.gen));
+      if (!genIsOpen(r.gen, newest)) ui.genOpen[r.gen] = true;
+    }
+  }
+
+  function genHeader(gen, members, open) {
+    let extra = '';
+    if (!open) {
+      // A folded generation still hints at what's inside.
+      const sel = ui.selected && flock.get(ui.selected);
+      const kin = sel ? members.filter(r => r.id === sel.sire || r.id === sel.dam).map(r => (r.id === sel.sire ? 'Sire' : 'Dam')) : [];
+      const w = waiting();
+      const picks = w ? members.filter(r => (penAction(r) || {}).act === 'pick').length : 0;
+      extra = '<span class="gen-peek">' + members.slice(0, 18).map(r => D.swatch(r.phenotype, 'xs')).join('') +
+        (members.length > 18 ? '<span class="faint">+' + (members.length - 18) + '</span>' : '') + '</span>' +
+        kin.map(k => '<span class="kin-tag inline">' + k + '</span>').join('') +
+        (picks ? '<span class="gen-picks">' + picks + ' to pick</span>' : '');
+    }
+    return '<button class="gen-head" data-gen="' + gen + '" data-fk="gen-' + gen + '" aria-expanded="' + open + '">' +
+      '<span class="chev" aria-hidden="true">▸</span><span class="gen-title">Generation ' + gen + '</span>' +
+      '<span class="faint">' + members.length + ' sheep</span>' + extra + '</button>';
+  }
+
+  function gridHTML(list) {
+    if (!list.length) return '<div class="grid-empty">No sheep match these filters.</div>';
+    const gens = [...new Set(list.map(r => r.gen))].sort((a, b) => (a - b) * ui.dir);
+    if (!grouped() || gens.length < 2) return list.map(cardHTML).join('');
+    const newest = Math.max(...flock.list().map(r => r.gen));
+    return gens.map(gen => {
+      const members = list.filter(r => r.gen === gen);
+      const open = genIsOpen(gen, newest);
+      return genHeader(gen, members, open) + (open ? members.map(cardHTML).join('') : '');
+    }).join('');
+  }
+
+  function countText(list) {
+    const all = flock.list();
+    const rams = all.filter(r => r.sex === 'ram').length;
+    const hidden = all.filter(hiddenRetired).length;
+    const room = flock.room();
+    return all.length + ' sheep · ' + plural(rams, 'ram') + ', ' + plural(all.length - rams, 'ewe') +
+      (room <= 0 ? ' · flock full' : room <= 10 ? ' · room for ' + room + ' more' : '') +
+      (hidden ? ' · ' + hidden + ' retired hidden' : '') +
+      (list.length !== all.length - hidden || ui.showRemoved ? ' · showing ' + list.length : '');
+  }
+
   function renderGrid() {
     for (const [id, t] of fresh) if (Date.now() - t >= FRESH_MS) fresh.delete(id);
     const list = visibleSheep();
-    const all = flock.list();
-    const rams = all.filter(r => r.sex === 'ram').length;
-    $('flock-count').textContent = all.length + ' sheep · ' + rams + ' ram' + (rams === 1 ? '' : 's') + ', ' +
-      (all.length - rams) + ' ewe' + (all.length - rams === 1 ? '' : 's') +
-      (list.length !== all.length || ui.showRemoved ? ' · showing ' + list.length : '');
+    $('flock-count').textContent = countText(list);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
     pickBanner();
-    $('grid').innerHTML = list.length
-      ? list.map(cardHTML).join('')
-      : '<div class="grid-empty">No sheep match these filters.</div>';
-    if (focused && focused.startsWith('card-')) {
+    $('grid').innerHTML = gridHTML(list);
+    if (focused && (focused.startsWith('card-') || focused.startsWith('gen-'))) {
       const el = $('grid').querySelector('[data-fk="' + focused + '"]');
       if (el) el.focus({ preventScroll: true });
     }
@@ -655,6 +733,10 @@
     $('sort-dir').textContent = ui.dir === 1 ? '↑' : '↓';
     $('sort-dir').title = ui.dir === 1 ? 'Ascending' : 'Descending';
     $('show-removed').checked = ui.showRemoved;
+    $('show-retired').checked = ui.showRetired;
+    const full = flock.room() <= 0;
+    $('add-btn').disabled = full;
+    $('add-btn').title = full ? fullText() : 'Add a new founder with random genes';
     const last = flock.lastBreeding();
     const undo = $('undo-btn');
     undo.disabled = !last;
@@ -1118,11 +1200,14 @@
       g[gene].some(a => a !== U) || (g.ruledOut && g.ruledOut[gene].length));
     const booGuessed = guessed('booroola');
     const done = [ram, ewe].filter(retired);
-    html += '<button class="btn btn-primary btn-wide" data-act="breed" data-fk="breed"' + (done.length ? ' disabled' : '') + '>Breed ' +
+    const full = flock.room() <= 0;
+    html += '<button class="btn btn-primary btn-wide" data-act="breed" data-fk="breed"' + (done.length || full ? ' disabled' : '') + '>Breed ' +
       esc(ram.name) + ' × ' + esc(ewe.name) + '</button>';
     if (done.length) {
       html += '<p class="pen-note">' + done.map(r => esc(retiredText(r))).join(' ') + ' Pick another ' +
         (done.length === 2 ? 'pair' : done[0].sex) + ' to keep breeding.</p>';
+    } else if (full) {
+      html += '<p class="pen-note">' + esc(fullText()) + '</p>';
     }
     html += lastLitterHTML() + penInvite();
     html += '<div class="pen-meta">Lambs\' inbreeding <strong>' + pct(F) + '</strong>' +
@@ -1221,6 +1306,7 @@
     if (ui.selected !== id) { ui.suggest = false; ui.renaming = false; ui.removeArmed = false; }
     ui.selected = id;
     ui.side = 'sheep';
+    showGen(flock.get(id));
     refresh();
     revealSide();
   }
@@ -1245,18 +1331,24 @@
 
   function breed() {
     if (!ui.pen.ram || !ui.pen.ewe) return;
-    const done = [ui.pen.ram, ui.pen.ewe].map(id => flock.get(id)).filter(retired);
+    const pair = [ui.pen.ram, ui.pen.ewe].map(id => flock.get(id));
+    const done = pair.filter(retired);
     if (done.length) { toast(retiredText(done[0])); return; }
+    if (flock.room() <= 0) { toast(fullText()); return; }
     const { event, lambs, lost } = flock.breed(ui.pen.ram, ui.pen.ewe);
     for (const l of lambs) { noteFor(l.id); fresh.set(l.id, Date.now()); }
     ui.lastLitter = event.id;
+    if (lambs.length) showGen(lambs[0]);
     refresh();
     const first = lambs.length && document.querySelector('.card[data-id="' + lambs[0].id + '"]');
     if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     const born = !lambs.length ? 'No lambs this time.'
       : lambs.length === 1 ? 'A lamb is born: ' + lambs[0].name + '.'
       : lambs.length + ' lambs are born: ' + lambs.map(l => l.name).join(', ') + '.';
-    toast(born + (lost ? ' ' + lostText(lost, lambs.length) : ''));
+    const nowRetired = pair.filter(retired).map(r => r.name);
+    toast(born + (lost ? ' ' + lostText(lost, lambs.length) : '') +
+      (nowRetired.length ? ' ' + listWords(nowRetired) + (nowRetired.length === 1 ? ' has' : ' have') + ' retired' +
+        (ui.showRetired ? '.' : ', and will be hidden from the flock once out of the pen.') : ''));
   }
 
   function undo() {
@@ -1276,7 +1368,9 @@
   }
 
   function addRandom() {
+    if (flock.room() <= 0) { toast(fullText()); return; }
     const r = flock.addSheep({});
+    showGen(r);
     noteFor(r.id);
     fresh.set(r.id, Date.now());
     ui.selected = r.id;
@@ -1304,7 +1398,7 @@
     flock.remove(r.id);
     if (ui.pen[r.sex] === r.id) ui.pen[r.sex] = null;
     refresh();
-    toast(r.name + ' left the flock. Tick "Show removed" to find them again.');
+    toast(r.name + ' left the flock. Tick Show removed to find them again.');
   }
 
   function finishRename() {
@@ -1401,6 +1495,14 @@
     const sex = t.closest('[data-sex]');
     if (sex) { ui.sex = sex.dataset.sex; refresh(); return; }
 
+    const gen = t.closest('[data-gen]');
+    if (gen) {
+      ui.genOpen[gen.dataset.gen] = gen.getAttribute('aria-expanded') !== 'true';
+      renderGrid();
+      save();
+      return;
+    }
+
     const act = t.closest('[data-act]');
     if (act) {
       switch (act.dataset.act) {
@@ -1441,6 +1543,7 @@
     if (t.id === 'allele-filter') { ui.allele = t.value; refresh(); return; }
     if (t.id === 'sort-select') { ui.sort = t.value; ui.dir = 1; refresh(); return; }
     if (t.id === 'show-removed') { ui.showRemoved = t.checked; refresh(); return; }
+    if (t.id === 'show-retired') { ui.showRetired = t.checked; refresh(); return; }
     if (t.id === 'import-file' && t.files && t.files[0]) { importFlock(t.files[0]); t.value = ''; }
   }
 

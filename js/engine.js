@@ -159,6 +159,11 @@
   // Most times a sheep can be bred: one litter per breeding.
   const BREEDING_LIMIT = { ram: 10, ewe: 5 };
 
+  // Most sheep the game's flock holds, retired ones included (removed ones
+  // don't count). At the limit, breeding and "+ Random sheep" stop until some
+  // are removed. A litter born just under it can take the flock up to 2 over.
+  const MAX_FLOCK_SIZE = 60;
+
   // Chance of a litter of 1, 2 or 3 by the ewe's number of Booroola copies.
   const LITTER_TABLE = [
     [0.62, 0.33, 0.05],
@@ -829,6 +834,7 @@
    * options.nameFor    function(sex) -> name for new sheep
    * options.fantasy    include the made-up fantasy genes
    * options.devGenes   keys of dev-only fantasy genes to include too
+   * options.maxSize    most sheep before breeding stops (default: no limit)
    * options.debug      expose peekGenotype() for the test page
    */
   function createFlock(options) {
@@ -837,6 +843,7 @@
     const nameFor = opts.nameFor || (() => 'Sheep ' + nextId);
     let fantasy = !!opts.fantasy;
     let devGenes = devKeys(opts.devGenes);
+    const maxSize = opts.maxSize > 0 ? opts.maxSize : Infinity;
 
     let sheep = new Map();    // id -> public record
     let secret = new Map();   // id -> { genotype, gv }
@@ -851,6 +858,13 @@
     const liabilitiesOn = () => (fantasy ? LIABILITIES : []);
 
     function rec(id) { return sheep.get(id) || null; }
+
+    // How many more sheep fit before the flock is full.
+    function room() {
+      let n = 0;
+      for (const r of sheep.values()) if (!r.removed) n++;
+      return maxSize - n;
+    }
 
     function breedingsLeft(id) {
       const r = rec(id);
@@ -922,6 +936,7 @@
       if (s.sex !== 'ram' || d.sex !== 'ewe') throw new Error('Need a ram and a ewe');
       if (s.removed || d.removed) throw new Error('Both parents must be in the flock');
       if (!breedingsLeft(sireId) || !breedingsLeft(damId)) throw new Error('Breeding limit reached');
+      if (room() <= 0) throw new Error('Flock is full');
       const ss = secret.get(sireId);
       const ds = secret.get(damId);
       const probs = litterProbabilities(booroolaCopies(ds.genotype.booroola), d.inbreeding);
@@ -1099,6 +1114,8 @@
       addSheep,
       breed,
       breedingsLeft,
+      room,
+      maxSize,
       canUndo: () => history.length > 0,
       lastBreeding: () => history[history.length - 1] || null,
       undoLastBreeding,
@@ -1157,7 +1174,7 @@
 
   const SheepEngine = {
     UNKNOWN, GENES, BASE_GENES, FANTASY_GENES, GENE, COLOR_GENES, TRAITS, TRAIT, LIABILITIES, LITTER_TABLE,
-    INBREEDING_FLEECE_PENALTY, INBREEDING_LITTER_PENALTY, BREEDING_LIMIT, SPECKLE_MUTATION_RATE,
+    INBREEDING_FLEECE_PENALTY, INBREEDING_LITTER_PENALTY, BREEDING_LIMIT, MAX_FLOCK_SIZE, SPECKLE_MUTATION_RATE,
     allele, alleleIds, allowedAlleles,
     phenotypeOf, colorOf, colorKey, lookKey,
     litterProbabilities, normCdf,

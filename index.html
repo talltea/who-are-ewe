@@ -98,6 +98,8 @@
     color: var(--ink);
   }
   .check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .check-group { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .check-group .check { gap: 4px; }
   .tag {
     display: inline-block; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 999px;
     font-size: 11px; color: var(--muted); line-height: 18px; white-space: nowrap;
@@ -148,6 +150,20 @@
     gap: 10px; padding: 0 20px 32px;
   }
   .grid-empty { grid-column: 1 / -1; padding: 40px; text-align: center; color: var(--muted); }
+  /* one row per generation; a folded one peeks at its sheep */
+  .gen-head {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    margin-top: 6px; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--line); background: none;
+    text-align: left; font-size: 13px;
+  }
+  .gen-head:first-child { margin-top: 0; }
+  .gen-head:hover { background: var(--hover); }
+  .gen-head .chev { width: 10px; color: var(--muted); transition: transform 0.15s; }
+  .gen-head[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .gen-title { font-weight: 650; }
+  .gen-peek { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+  .gen-picks { padding: 0 7px; border: 1.5px solid var(--ink); border-radius: 999px; font-size: 11.5px; font-weight: 650; line-height: 17px; }
+  .kin-tag.inline { position: static; }
 
   /* ---------- cards ---------- */
   .card {
@@ -794,11 +810,13 @@
           <label class="field">Sort <select id="sort-select"></select></label>
           <button class="btn btn-icon" id="sort-dir" data-act="sort-dir" aria-label="Reverse sort order">↑</button>
         </span>
-        <label class="check"><input type="checkbox" id="show-removed"> Show removed</label>
+        <span class="check-group" role="group" aria-label="Also show">Show
+          <label class="check"><input type="checkbox" id="show-retired"> retired</label>
+          <label class="check"><input type="checkbox" id="show-removed"> removed</label></span>
         <span class="spacer"></span>
         <button class="btn" id="check-all-btn" data-act="check-all">Check sure guesses</button>
         <button class="btn" id="undo-btn" data-act="undo">Undo last breeding</button>
-        <button class="btn btn-primary" data-act="add">+ Random sheep</button>
+        <button class="btn btn-primary" id="add-btn" data-act="add">+ Random sheep</button>
       </div>
       <div class="flock-count" id="flock-count"></div>
       <div class="pick-banner" id="pick-banner" role="status" hidden></div>
