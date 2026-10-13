@@ -227,6 +227,65 @@
   .card-name .sex { color: var(--muted); font-weight: 400; }
   .card-meta { font-size: 12px; color: var(--muted); }
   .card-stat { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* stars: shown on hover until set, where a pointer can hover */
+  .star {
+    flex: none; align-self: center; margin-left: auto; width: 22px; height: 22px; padding: 0;
+    border: 0; border-radius: 50%; background: none; color: var(--faint); font-size: 15px; line-height: 1;
+  }
+  .star:hover { color: var(--ink); background: var(--hover); }
+  .star.on { color: var(--ink); }
+  @media (hover: hover) {
+    .card .star:not(.on) { opacity: 0; }
+    .card:hover .star, .card:focus-within .star { opacity: 1; }
+  }
+  .star-filter[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .gen-stars { font-size: 12px; font-weight: 650; }
+  /* breeding goal */
+  .goal-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; margin: -2px 20px 12px; font-size: 13px; }
+  .goal-tag { flex: none; color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+  .goal-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .goal-line .link { flex: none; font-size: 12.5px; }
+  .goal { margin-bottom: 14px; }
+  .goal-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .goal-text {
+    width: 100%; min-height: 50px; padding: 7px 10px; resize: vertical; line-height: 1.4;
+    border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2);
+  }
+  .goal-text:focus { background: var(--surface); }
+  .goal-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .goal-allele {
+    padding: 0 6px; border: 1px solid var(--ink); border-radius: 5px; background: var(--surface);
+    color: var(--ink); font-size: 11.5px; font-weight: 600; line-height: 17px; white-space: nowrap;
+  }
+  .goal-only { font-size: 12.5px; }
+  .goal-toggle {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; margin-top: 6px; padding: 6px 0;
+    border: 0; background: none; font-size: 13px; font-weight: 600; text-align: left;
+  }
+  .goal-toggle .chev { display: inline-block; width: 10px; color: var(--muted); transition: transform 0.15s; }
+  .goal-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .goal-table { margin-top: 2px; }
+  .goal-badge {
+    align-self: flex-start; margin-top: 2px; padding: 0 7px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 650; line-height: 18px;
+  }
+  .goal-badge.yes { background: var(--ink); color: #fff; }
+  .goal-badge.maybe { border: 1px dashed var(--line-strong); color: var(--muted); font-weight: 600; line-height: 16px; }
+  .goal-verdict { margin: 0 0 8px; font-size: 13px; }
+  .goal-verdict.yes { font-weight: 650; }
+  .goal-check { border-collapse: collapse; font-size: 13px; }
+  .goal-check th { padding: 3px 14px 3px 0; text-align: left; font-weight: 550; }
+  .goal-check td { padding: 3px 14px 3px 0; }
+  .goal-check .gs.yes { font-weight: 650; }
+  .goal-check .gs.maybe { color: var(--muted); }
+  .goal-check .gs.no { color: var(--muted); }
+  /* while picking a mate: relatedness to the sheep waiting */
+  .card-rel {
+    align-self: flex-start; margin-top: 2px; padding: 0 7px; border-radius: 999px;
+    background: var(--hover); color: var(--ink-2); font-size: 11.5px; font-weight: 600; line-height: 18px;
+  }
+  .card-rel.none { padding: 0; background: none; color: var(--muted); font-weight: 500; }
+  .card-rel.close { background: var(--ink); color: #fff; }
   .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
   .gchip { display: inline-flex; }
   .slot {
@@ -754,7 +813,7 @@
   @media (max-width: 560px) {
     .topbar { gap: 10px; padding: 0 12px; }
     .toolbar, .flock-count, .grid { padding-left: 16px; padding-right: 16px; }
-    .pick-banner { margin-left: 16px; margin-right: 16px; }
+    .pick-banner, .goal-line { margin-left: 16px; margin-right: 16px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
     .side-body { padding: 16px; }
     .bar-row { grid-template-columns: 96px 1fr 70px; }
@@ -805,6 +864,7 @@
         <div class="seg" role="group" aria-label="Show">
           <button data-sex="all">All</button><button data-sex="ram">Rams</button><button data-sex="ewe">Ewes</button>
         </div>
+        <button class="btn star-filter" id="star-filter" data-act="star-filter" aria-pressed="false" title="Show only starred sheep">★ Starred</button>
         <label class="field">Guessed to carry <select id="allele-filter"></select></label>
         <span class="sort-group">
           <label class="field">Sort <select id="sort-select"></select></label>
@@ -819,6 +879,7 @@
         <button class="btn btn-primary" id="add-btn" data-act="add">+ Random sheep</button>
       </div>
       <div class="flock-count" id="flock-count"></div>
+      <div class="goal-line" id="goal-line" hidden></div>
       <div class="pick-banner" id="pick-banner" role="status" hidden></div>
       <div class="grid" id="grid"></div>
     </div>

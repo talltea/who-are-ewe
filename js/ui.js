@@ -45,6 +45,10 @@
 
   let flock = null;
   let notes = {};
+  // What the player is breeding this flock towards: a note, plus target
+  // alleles per gene ('' for "any").
+  let goal = blankGoal();
+  const GOAL_MAX = 300;
   const ui = {
     view: 'flock',
     side: 'sheep',
@@ -62,6 +66,9 @@
     fantasyNotes: true,
     hideInvite: false,
     showRetired: false,
+    starredOnly: false,
+    goalOnly: false,
+    goalOpen: false,
     genOpen: {}, // generation -> true/false, where the player opened or closed it
   };
   const fresh = new Map(); // id -> time it arrived, for the highlight
@@ -157,13 +164,84 @@
       (act.act === 'out' ? ' aria-pressed="true"' : '') + '>' + esc(label || act.label) + '</button>';
   }
 
+  // While picking a mate: how related a candidate is to the sheep waiting.
+  function relHTML(w, r) {
+    const rel = flock.relatedness(w.id, r.id);
+    const level = rel >= 0.25 ? 'close' : rel > 0 ? 'some' : 'none';
+    const tip = rel ? 'Shares about ' + pct(rel) + ' of its genes with ' + w.name + ' by descent. Their lambs would be ' +
+      pct(flock.kinship(w.id, r.id)) + ' inbred.' : 'No shared ancestors with ' + w.name + ' in the pedigree.';
+    return '<div class="card-rel ' + level + '" title="' + esc(tip) + '">' + (rel ? pct(rel) + ' related' : 'Unrelated') + '</div>';
+  }
+
   function pickBanner() {
     const w = waiting();
     const el = $('pick-banner');
     el.hidden = !w;
     if (!w) return;
-    el.innerHTML = D.swatch(w.phenotype, 'sm') + '<span>Pick a <b>' + otherSex(w.sex) + '</b> to breed with ' + esc(w.name) + '.</span>' +
+    el.innerHTML = D.swatch(w.phenotype, 'sm') + '<span>Pick a <b>' + otherSex(w.sex) + '</b> to breed with ' + esc(w.name) +
+      '. Each card shows how related it is to ' + esc(w.name) + '.</span>' +
       '<button class="btn btn-small" data-act="cancel-pick">Cancel</button>';
+  }
+
+  // -------------------------------------------------------- breeding goal
+
+  function blankGoal() { return { text: '', alleles: {} }; }
+
+  // Saves from before target alleles stored the goal as plain text.
+  function sanitizeGoal(raw) {
+    const g = blankGoal();
+    if (typeof raw === 'string') { g.text = raw.slice(0, GOAL_MAX); return g; }
+    if (!raw || typeof raw !== 'object') return g;
+    if (typeof raw.text === 'string') g.text = raw.text.slice(0, GOAL_MAX);
+    for (const gene of E.GENES) {
+      const slots = raw.alleles && raw.alleles[gene.key];
+      if (!Array.isArray(slots)) continue;
+      const clean = [0, 1].map(i => (E.allele(gene.key, slots[i]) ? slots[i] : ''));
+      if (clean.some(Boolean)) g.alleles[gene.key] = clean;
+    }
+    return g;
+  }
+
+  // The target alleles for this flock's genes, as the engine takes them: { gene: [allele | null, allele | null] }.
+  function goalAlleles() {
+    const out = {};
+    for (const g of genesOn()) {
+      const slots = goal.alleles[g.key];
+      if (slots && slots.some(Boolean)) out[g.key] = slots.map(a => a || null);
+    }
+    return out;
+  }
+
+  const hasGoalAlleles = () => Object.keys(goalAlleles()).length > 0;
+  const goalSym = (gene, slots) => slots.map(a => (a ? E.allele(gene, a).sym : 'any')).join('/');
+
+  function goalChips() {
+    const ga = goalAlleles();
+    return Object.keys(ga).map(k => '<span class="goal-allele" title="' + E.GENE[k].name + '">' + goalSym(k, ga[k]) + '</span>').join('');
+  }
+
+  // How a sheep stands against the goal, from its look and the player's notes. Null with no target alleles.
+  const goalCache = new Map();
+  function goalOf(r) {
+    const ga = goalAlleles();
+    if (!Object.keys(ga).length) return null;
+    const guess = guessOf(r.id);
+    const key = E.lookKey(r.phenotype) + '|' + JSON.stringify(guess) + JSON.stringify(ga);
+    let v = goalCache.get(key);
+    if (v === undefined) {
+      if (goalCache.size > 5000) goalCache.clear();
+      v = E.goalStatus(r.phenotype, guess, ga);
+      goalCache.set(key, v);
+    }
+    return v;
+  }
+
+  function goalBadge(r) {
+    const st = goalOf(r);
+    if (!st || st.status === 'no') return '';
+    return st.status === 'yes'
+      ? '<div class="goal-badge yes" title="Its look and your notes show it has every goal allele">✓ Goal</div>'
+      : '<div class="goal-badge maybe" title="Could have the goal alleles: its look and your notes don\'t rule them out">Goal?</div>';
   }
 
   // ------------------------------------------------------------- notes
@@ -177,8 +255,10 @@
       genes[g.key] = [{ a: U, sure: false }, { a: U, sure: false }];
       ruledOut[g.key] = [];
     }
-    return { genes, ruledOut, text: '' };
+    return { genes, ruledOut, text: '', star: false };
   }
+
+  const isStarred = id => !!(notes[id] && notes[id].star);
 
   function noteFor(id) {
     if (!notes[id]) notes[id] = blankNote();
@@ -210,6 +290,7 @@
       const r = flock.get(id);
       const n = blankNote();
       if (typeof src.text === 'string') n.text = src.text;
+      n.star = !!src.star;
       for (const g of genesOn()) {
         const slots = src.genes && src.genes[g.key];
         if (!Array.isArray(slots)) continue;
@@ -424,12 +505,12 @@
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
       sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir, showRemoved: ui.showRemoved,
-      fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite, showRetired: ui.showRetired, genOpen: ui.genOpen,
+      fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite, showRetired: ui.showRetired, starredOnly: ui.starredOnly, goalOnly: ui.goalOnly, genOpen: ui.genOpen,
     };
   }
 
   function snapshot() {
-    return { format: FILE_FORMAT, version: 2, savedAt: new Date().toISOString(), flock: flock.exportState(), notes, ui: persistUi() };
+    return { format: FILE_FORMAT, version: 2, savedAt: new Date().toISOString(), flock: flock.exportState(), notes, goal, ui: persistUi() };
   }
 
   let saveTimer = null;
@@ -454,6 +535,8 @@
     next.importState(data.flock);
     flock = next;
     notes = sanitizeNotes(data.notes);
+    goal = sanitizeGoal(data.goal);
+    goalCache.clear();
     for (const r of flock.list({ includeRemoved: true })) noteFor(r.id);
     const u = data.ui || {};
     ui.view = u.view === 'guide' ? 'guide' : 'flock';
@@ -474,6 +557,8 @@
     ui.fantasyNotes = u.fantasyNotes !== false;
     ui.hideInvite = !!u.hideInvite;
     ui.showRetired = !!u.showRetired;
+    ui.starredOnly = !!u.starredOnly;
+    ui.goalOnly = !!u.goalOnly;
     ui.genOpen = {};
     if (u.genOpen && typeof u.genOpen === 'object') {
       for (const k of Object.keys(u.genOpen)) if (/^\d+$/.test(k)) ui.genOpen[k] = !!u.genOpen[k];
@@ -507,6 +592,8 @@
       if (new Set(looks.map(D.title)).size >= 4 && whites >= 2 && whites <= 4) break;
     }
     notes = {};
+    goal = blankGoal();
+    goalCache.clear();
     for (const r of flock.list()) noteFor(r.id);
     Object.assign(ui, { selected: null, side: 'sheep', pen: { ram: null, ewe: null }, lastLitter: null, suggest: false, renaming: false, genOpen: {} });
     surpriseCache.clear();
@@ -562,13 +649,15 @@
   // Retired sheep are hidden unless asked for, or unless they're selected, in
   // the pen, or a parent of the selected sheep.
   function hiddenRetired(r) {
-    if (ui.showRetired || r.removed || !retired(r)) return false;
+    if (ui.showRetired || r.removed || !retired(r) || isStarred(r.id)) return false;
     const sel = ui.selected && flock.get(ui.selected);
     return r.id !== ui.selected && r.id !== ui.pen.ram && r.id !== ui.pen.ewe && !(sel && (sel.sire === r.id || sel.dam === r.id));
   }
 
   function visibleSheep() {
     let list = flock.list({ includeRemoved: ui.showRemoved }).filter(r => !hiddenRetired(r));
+    if (ui.starredOnly) list = list.filter(r => isStarred(r.id));
+    if (ui.goalOnly && hasGoalAlleles()) list = list.filter(r => goalOf(r).status !== 'no');
     if (ui.sex !== 'all') list = list.filter(r => r.sex === ui.sex);
     if (ui.allele) {
       const [gene, a] = ui.allele.split(':');
@@ -607,6 +696,13 @@
     return parts.length ? '<div class="chips">' + parts.join('') + '</div>' : '';
   }
 
+  function starButton(r, cls, label) {
+    const on = isStarred(r.id);
+    return '<button class="' + cls + (on ? ' on' : '') + '" data-star="' + r.id + '" aria-pressed="' + on + '" title="' +
+      (on ? 'Starred. Click to unstar.' : 'Star ' + esc(r.name)) + '" aria-label="Star ' + esc(r.name) + '">' +
+      (on ? '★' : '☆') + (label ? ' ' + label(on) : '') + '</button>';
+  }
+
   function cardHTML(r) {
     const d = D.describe(r.phenotype);
     const issues = lambIssues(r);
@@ -623,6 +719,7 @@
     const sel = ui.selected && flock.get(ui.selected);
     const kin = sel && (sel.sire === r.id ? 'Sire' : sel.dam === r.id ? 'Dam' : '');
     if (kin) cls.push('is-parent');
+    if (isStarred(r.id)) cls.push('is-starred');
     const trait = E.TRAIT[ui.sort];
     const stat = trait
       ? '<div class="card-stat">' + r.phenotype.fleece[trait.key].toFixed(1) + ' <small>' + trait.unit + '</small></div>'
@@ -645,8 +742,10 @@
       esc(r.name + ', ' + d.sex + ', ' + d.title + (kin ? ', ' + kin.toLowerCase() + ' of ' + sel.name : '')) + '">' +
       (kin ? '<span class="kin-tag" title="' + esc(sel.name) + '\'s ' + kin.toLowerCase() + '">' + kin + '</span>' : '') +
       '<div class="card-top">' + D.swatch(r.phenotype, 'md') + pen + '</div>' +
-      '<div class="card-name"><span class="nm">' + esc(r.name) + '</span><span class="sex" title="' + d.sex + '">' + d.sexIcon + '</span></div>' +
+      '<div class="card-name"><span class="nm">' + esc(r.name) + '</span><span class="sex" title="' + d.sex + '">' + d.sexIcon + '</span>' +
+      starButton(r, 'star') + '</div>' +
       '<div class="card-meta">Gen ' + r.gen + (r.removed ? ' · removed' : retired(r) ? ' · retired' : '') + '</div>' +
+      goalBadge(r) + (act && act.act === 'pick' ? relHTML(w, r) : '') +
       stat + chipsHTML(r.id) + mistake + flag +
       '</div>';
   }
@@ -679,9 +778,11 @@
       const kin = sel ? members.filter(r => r.id === sel.sire || r.id === sel.dam).map(r => (r.id === sel.sire ? 'Sire' : 'Dam')) : [];
       const w = waiting();
       const picks = w ? members.filter(r => (penAction(r) || {}).act === 'pick').length : 0;
+      const stars = members.filter(r => isStarred(r.id)).length;
       extra = '<span class="gen-peek">' + members.slice(0, 18).map(r => D.swatch(r.phenotype, 'xs')).join('') +
         (members.length > 18 ? '<span class="faint">+' + (members.length - 18) + '</span>' : '') + '</span>' +
         kin.map(k => '<span class="kin-tag inline">' + k + '</span>').join('') +
+        (stars ? '<span class="gen-stars" title="' + stars + ' starred">★ ' + stars + '</span>' : '') +
         (picks ? '<span class="gen-picks">' + picks + ' to pick</span>' : '');
     }
     return '<button class="gen-head" data-gen="' + gen + '" data-fk="gen-' + gen + '" aria-expanded="' + open + '">' +
@@ -718,6 +819,7 @@
     $('flock-count').textContent = countText(list);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
     pickBanner();
+    renderGoalLine();
     $('grid').innerHTML = gridHTML(list);
     if (focused && (focused.startsWith('card-') || focused.startsWith('gen-'))) {
       const el = $('grid').querySelector('[data-fk="' + focused + '"]');
@@ -733,6 +835,7 @@
     $('sort-dir').title = ui.dir === 1 ? 'Ascending' : 'Descending';
     $('show-removed').checked = ui.showRemoved;
     $('show-retired').checked = ui.showRetired;
+    $('star-filter').setAttribute('aria-pressed', String(ui.starredOnly));
     const full = flock.room() <= 0;
     $('add-btn').disabled = full;
     $('add-btn').title = full ? fullText() : 'Add a new founder with random genes';
@@ -1011,6 +1114,22 @@
     return penButton(r, { act: 'start', title: 'Put ' + r.name + ' in the breeding pen, then pick a mate' }, 'btn btn-small', 'Breed this ' + r.sex);
   }
 
+  function goalCheckHTML(r) {
+    const st = goalOf(r);
+    if (!st) return '';
+    const ga = goalAlleles();
+    const word = { yes: '✓ Has it', maybe: '? Could have it', no: '✗ Can\'t have it' };
+    const head = st.status === 'yes' ? 'Meets your goal, going by its look and your notes.'
+      : st.status === 'maybe' ? 'Could meet your goal. Its look and your notes don\'t settle it yet.'
+      : !st.together && !Object.values(st.genes).includes('no') ? 'Each goal gene could fit on its own, but not all together with how it looks.'
+      : 'Can\'t meet your goal, going by its look and your notes.';
+    return '<section class="sp-sec"><div class="sec-head"><h3>Breeding goal</h3>' +
+      '<button class="btn btn-small" data-act="edit-goal">Edit goal</button></div>' +
+      '<p class="goal-verdict ' + st.status + '">' + head + '</p>' +
+      '<table class="goal-check">' + Object.keys(ga).map(k => '<tr><th scope="row">' + E.GENE[k].name + '</th><td>' + goalSym(k, ga[k]) +
+        '</td><td class="gs ' + st.genes[k] + '">' + word[st.genes[k]] + '</td></tr>').join('') + '</table></section>';
+  }
+
   function sheepPanelHTML(r) {
     if (!r) return introHTML();
     const d = D.describe(r.phenotype);
@@ -1021,7 +1140,8 @@
       : '<h2>' + esc(r.name) + ' <span class="sex-big">' + d.sexIcon + '</span></h2>';
     const actions = r.removed
       ? '<button class="btn btn-small" data-act="restore">Return to flock</button>'
-      : '<button class="btn btn-small" data-act="rename">Rename</button>' +
+      : starButton(r, 'btn btn-small star-btn', on => (on ? 'Starred' : 'Star')) +
+        '<button class="btn btn-small" data-act="rename">Rename</button>' +
         panelPenButton(r) +
         '<button class="btn btn-small btn-danger' + (ui.removeArmed ? ' armed' : '') + '" data-act="remove">' + (ui.removeArmed ? 'Click again to remove' : 'Remove from flock') + '</button>';
     return '<div class="sp-head">' + D.swatch(r.phenotype, 'xl') +
@@ -1042,7 +1162,7 @@
       '<dt>Litters</dt><dd>' + litterText(r) + '</dd>' +
       '<dt>Breedings</dt><dd>' + breedingsText(r) + '</dd>' +
       '</dl>' + fleeceBars(r.phenotype.fleece) + '</section>' +
-      notesHTML(r) + pedigreeHTML(r) + lambsHTML(r);
+      goalCheckHTML(r) + notesHTML(r) + pedigreeHTML(r) + lambsHTML(r);
   }
 
   // ------------------------------------------------------- breeding pen
@@ -1184,10 +1304,70 @@
       '<button class="btn btn-small" data-act="undo">Undo this litter</button></div>';
   }
 
+  function goalRow(g) {
+    const slots = goal.alleles[g.key] || ['', ''];
+    const sel = i => '<select class="slot-select goal-select ' + (slots[i] ? 'hunch' : 'unk') + '" data-goal-gene="' + g.key + '" data-slot="' + i +
+      '" data-fk="goal-' + g.key + i + '" aria-label="Goal ' + g.name + ' allele ' + (i + 1) + '"><option value="">any</option>' +
+      g.alleles.map(a => '<option value="' + a.id + '"' + (slots[i] === a.id ? ' selected' : '') + '>' + esc(a.plain + '  ' + a.name) + '</option>').join('') +
+      '</select>';
+    return '<tr><th scope="row">' + g.name + '</th><td>' + sel(0) + '</td><td class="slash">/</td><td>' + sel(1) + '</td></tr>';
+  }
+
+  function goalHTML() {
+    const n = Object.keys(goalAlleles()).length;
+    return '<div class="goal"><label class="goal-label" for="goal-text">Breeding goal</label>' +
+      '<textarea class="goal-text" id="goal-text" data-goal data-fk="goal" rows="2" maxlength="' + GOAL_MAX + '" ' +
+      'placeholder="What are you breeding towards? e.g. polled moorit badgerface ewes with fine fleece">' + esc(goal.text) + '</textarea>' +
+      '<button class="goal-toggle" data-act="goal-alleles" data-fk="goal-alleles" aria-expanded="' + ui.goalOpen + '">' +
+      '<span class="chev" aria-hidden="true">▸</span>Target alleles ' + (n ? '<span class="goal-chips">' + goalChips() + '</span>' : '<span class="faint">none set</span>') +
+      '</button>' +
+      (ui.goalOpen
+        ? '<table class="notes-table goal-table">' + genesOn().map(goalRow).join('') + '</table>' +
+          '<p class="hint">Pick the alleles you want, and leave a slot on <b>any</b> if either allele will do. ' +
+          'Cards then show <b>✓ Goal</b> when a sheep\'s look and your notes prove it has them, and <b>Goal?</b> when it might.</p>'
+        : '') +
+      '</div>';
+  }
+
+  function renderGoalLine() {
+    const el = $('goal-line');
+    const alleles = hasGoalAlleles();
+    el.hidden = !goal.text.trim() && !alleles;
+    if (el.hidden) return;
+    el.innerHTML = '<span class="goal-tag">Goal</span>' +
+      (goal.text.trim() ? '<span class="goal-words" title="' + esc(goal.text) + '">' + esc(goal.text) + '</span>' : '') +
+      (alleles ? '<span class="goal-chips">' + goalChips() + '</span>' : '') +
+      '<button class="link" data-act="edit-goal">Edit</button>' +
+      (alleles ? '<label class="check goal-only"><input type="checkbox" data-goal-only' + (ui.goalOnly ? ' checked' : '') + '> only sheep that could match</label>' : '');
+  }
+
+  // Lambs from this pair that would meet the goal.
+  function goalPrediction(ram, ewe) {
+    const ga = goalAlleles();
+    const pred = E.predictGoal(guessOf(ram.id), guessOf(ewe.id), ga);
+    if (!pred) return '';
+    const genes = Object.keys(ga);
+    const same = pred.ram.min === pred.ewe.min && pred.ram.max === pred.ewe.max;
+    return '<h4>Goal lambs <small class="goal-chips">' + goalChips() + '</small></h4>' +
+      (!hasGuesses(ram.id, genes) && !hasGuesses(ewe.id, genes)
+        ? '<p class="hint">Write notes on the goal genes for either parent to see the chance of a lamb with the goal alleles.</p>'
+        : (same ? '<div class="horn-line"><span>Lambs with the goal alleles</span><span class="num">' + rangeText(pred.ewe) + '</span></div>'
+          : hornLine(pred.ram, 'Ram lambs').replace(' horned', ' with them') + hornLine(pred.ewe, 'Ewe lambs').replace(' horned', ' with them')) +
+          dependsLine([pred.ram, pred.ewe], ram, ewe));
+  }
+
+  function editGoal() {
+    ui.side = 'breed';
+    renderSide();
+    revealSide();
+    const t = $('goal-text');
+    if (t) { t.focus({ preventScroll: true }); t.setSelectionRange(t.value.length, t.value.length); }
+  }
+
   function penHTML() {
     const ram = ui.pen.ram && flock.get(ui.pen.ram);
     const ewe = ui.pen.ewe && flock.get(ui.pen.ewe);
-    let html = '<div class="pen-slots">' + penSlot(ram, 'ram') + '<span class="pen-x">×</span>' + penSlot(ewe, 'ewe') + '</div>';
+    let html = goalHTML() + '<div class="pen-slots">' + penSlot(ram, 'ram') + '<span class="pen-x">×</span>' + penSlot(ewe, 'ewe') + '</div>';
     if (!ram || !ewe) {
       return html + lastLitterHTML() + '<p class="hint">Click <b>Breed</b> on a sheep\'s card, then pick its mate. ' +
         'You\'ll see what their lambs might look like, based on your notes.</p>' + penInvite();
@@ -1209,9 +1389,11 @@
       html += '<p class="pen-note">' + esc(fullText()) + '</p>';
     }
     html += lastLitterHTML() + penInvite();
-    html += '<div class="pen-meta">Lambs\' inbreeding <strong>' + pct(F) + '</strong>' +
-      ' <span class="muted">· ' + (F > 0 ? inbreedingNote(F) : 'unrelated') + '</span></div>';
-    html += '<section class="sp-sec"><h3>Predicted lambs <small>from your notes</small></h3>' +
+    const rel = flock.relatedness(ram.id, ewe.id);
+    html += '<div class="pen-meta">' + (rel
+      ? 'Parents <strong>' + pct(rel) + '</strong> related · lambs\' inbreeding <strong>' + pct(F) + '</strong> <span class="muted">· ' + inbreedingNote(F) + '</span>'
+      : 'Parents unrelated · lambs\' inbreeding <strong>0%</strong>') + '</div>';
+    html += '<section class="sp-sec"><h3>Predicted lambs <small>from your notes</small></h3>' + goalPrediction(ram, ewe) +
       colorPrediction(pred, ram, ewe) +
       '<h4>Horns</h4>' +
       (guessed('horns')
@@ -1448,6 +1630,14 @@
     const side = t.closest('[data-side]');
     if (side) { ui.side = side.dataset.side; renderSide(); save(); return; }
 
+    const star = t.closest('[data-star]');
+    if (star) {
+      const n = noteFor(star.dataset.star);
+      n.star = !n.star;
+      refresh();
+      return;
+    }
+
     const pen = t.closest('[data-pen]');
     if (pen) {
       if (pen.dataset.penAct === 'out') takeOutOfPen(pen.dataset.pen);
@@ -1520,6 +1710,9 @@
         case 'clear-ram': ui.pen.ram = null; refresh(); break;
         case 'cancel-pick': ui.pen = { ram: null, ewe: null }; refresh(); break;
         case 'try-fantasy': tryFantasy(); break;
+        case 'star-filter': ui.starredOnly = !ui.starredOnly; refresh(); break;
+        case 'edit-goal': editGoal(); break;
+        case 'goal-alleles': ui.goalOpen = !ui.goalOpen; renderSide(); break;
         case 'hide-invite': ui.hideInvite = true; refresh(); break;
         case 'clear-ewe': ui.pen.ewe = null; refresh(); break;
         case 'sort-dir': ui.dir = -ui.dir; refresh(); break;
@@ -1538,6 +1731,15 @@
 
   function onChange(e) {
     const t = e.target;
+    if (t.matches('[data-goal-gene]')) {
+      const gene = t.dataset.goalGene;
+      if (!goal.alleles[gene]) goal.alleles[gene] = ['', ''];
+      goal.alleles[gene][+t.dataset.slot] = t.value;
+      if (!goal.alleles[gene].some(Boolean)) delete goal.alleles[gene];
+      refresh();
+      return;
+    }
+    if (t.matches('[data-goal-only]')) { ui.goalOnly = t.checked; refresh(); return; }
     if (t.matches('.slot-select')) { setSlot(t.dataset.gene, +t.dataset.slot, t.value); return; }
     if (t.id === 'allele-filter') { ui.allele = t.value; refresh(); return; }
     if (t.id === 'sort-select') { ui.sort = t.value; ui.dir = 1; refresh(); return; }
@@ -1550,6 +1752,11 @@
     const t = e.target;
     if (t.matches('[data-notes-text]')) {
       noteFor(t.dataset.notesText).text = t.value;
+      save();
+    }
+    if (t.matches('[data-goal]')) {
+      goal.text = t.value.slice(0, GOAL_MAX);
+      renderGoalLine();
       save();
     }
   }

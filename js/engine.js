@@ -808,6 +808,113 @@
     return issues;
   }
 
+  // --------------------------------------------------- breeding goals
+  //
+  // A goal is { gene: [allele | null, allele | null] }: the alleles the
+  // player is breeding towards, with null for "any". A pair meets it if it
+  // carries every allele named, as many times as named. Like predictions, goal
+  // checks use only looks and the player's notes, never real genotypes.
+
+  function goalGenes(goal) {
+    return Object.keys(goal || {}).filter(k => GENE[k] && Array.isArray(goal[k]) && goal[k].some(a => a));
+  }
+
+  function meetsGoal(pair, want) {
+    const have = pair.filter(a => a !== null);
+    for (const a of want) {
+      if (!a) continue;
+      const i = have.indexOf(a);
+      if (i < 0) return false;
+      have.splice(i, 1);
+    }
+    return true;
+  }
+
+  // Call fn with every combination of these pairs that passes test.
+  function eachCombo(pairs, genes, test, fn) {
+    const g = {};
+    (function rec(i) {
+      if (i === genes.length) { if (test(g)) fn(g); return; }
+      for (const p of pairs[genes[i]]) { g[genes[i]] = p; rec(i + 1); }
+    })(0);
+  }
+
+  const verdict = (pairs, want) => (!pairs.length ? 'no' : pairs.every(p => meetsGoal(p, want)) ? 'yes'
+    : pairs.some(p => meetsGoal(p, want)) ? 'maybe' : 'no');
+
+  /**
+   * How a sheep stands against a goal, from its look and the player's notes.
+   * Returns { status, genes: { gene: status }, together } where each status is
+   * 'yes' (certain), 'maybe' or 'no'. together is false when each gene could
+   * fit on its own but not all at once with how the sheep looks. Null if the
+   * goal names no alleles.
+   */
+  function goalStatus(look, guess, goal) {
+    const active = activeKeys(guess);
+    const want = goalGenes(goal).filter(g => active.has(g));
+    if (!want.length) return null;
+    const own = g => pairsFromOwn(g, guess[g], allowedAlleles(guess, g), look.sex)
+      .filter(p => !(GENE[g].lethal && copies(p, GENE[g].lethal) === 2));
+    const genes = {};
+    let together = true;
+    const seen = new Set();
+    for (const { genes: gs, test } of groupsFor(look, active)) {
+      let pairs = {};
+      for (const g of gs) pairs[g] = own(g);
+      // Notes that clash with the look are flagged elsewhere; judge by the look alone.
+      if (!anyCombo(pairs, gs, test)) {
+        pairs = {};
+        for (const g of gs) pairs[g] = allPairs(g, look.sex).filter(p => !(GENE[g].lethal && copies(p, GENE[g].lethal) === 2));
+      }
+      // Pairs of each gene that fit the look in at least one combination.
+      const fits = {};
+      for (const g of gs) fits[g] = new Map();
+      eachCombo(pairs, gs, test, combo => { for (const g of gs) fits[g].set(combo[g].join('|'), combo[g]); });
+      const onGoal = {};
+      for (const g of gs) onGoal[g] = want.includes(g) ? pairs[g].filter(p => meetsGoal(p, goal[g])) : pairs[g];
+      if (!anyCombo(onGoal, gs, test)) together = false;
+      for (const g of gs) {
+        seen.add(g);
+        if (want.includes(g)) genes[g] = verdict([...fits[g].values()], goal[g]);
+      }
+    }
+    // Genes the look says nothing about, like Booroola or color genes on a white sheep.
+    for (const g of want) if (!seen.has(g)) genes[g] = verdict(own(g), goal[g]);
+    const all = want.map(g => genes[g]);
+    const status = !together || all.includes('no') ? 'no' : all.every(v => v === 'yes') ? 'yes' : 'maybe';
+    return { status, genes, together };
+  }
+
+  /**
+   * Chance a lamb meets the goal, from the parents' guesses, per lamb sex:
+   * { ram: { min, max, depends }, ewe: {...} }. Genes are independent, so each
+   * is predicted on its own and the chances multiplied.
+   */
+  function predictGoal(sire, dam, goal) {
+    const sireGuess = alive(sire);
+    const damGuess = alive(dam);
+    const active = activeKeys(sireGuess, damGuess);
+    const want = goalGenes(goal).filter(g => active.has(g));
+    if (!want.length) return null;
+    const out = {};
+    for (const sex of ['ram', 'ewe']) {
+      let min = 1;
+      let max = 1;
+      const depends = [];
+      for (const k of want) {
+        const o = chanceOf(predictOutcomes(sireGuess, damGuess, [k], g => {
+          const v = !lostOf(g) && meetsGoal(g[k], goal[k]) ? 'yes' : 'no';
+          return { key: v, value: v };
+        }, { sex, raw: true }), 'yes');
+        min *= o.min;
+        max *= o.max;
+        addDepends(depends, o.depends);
+      }
+      out[sex] = { min: round4(min), max: round4(max), depends };
+    }
+    return out;
+  }
+
   // --------------------------------------------------- secret encoding
 
   const KEY = 'baa-baa-black-sheep-have-you-any-wool';
@@ -886,6 +993,15 @@
       const v = (kinship(young.sire, old) + kinship(young.dam, old)) / 2;
       kinMemo.set(key, v);
       return v;
+    }
+
+    // Coefficient of relationship: the share of genes two sheep have in common
+    // by descent, from the pedigree. Full siblings 0.5, half siblings 0.25.
+    function relatedness(a, b) {
+      const ra = rec(a);
+      const rb = rec(b);
+      if (!ra || !rb) return 0;
+      return 2 * kinship(a, b) / Math.sqrt((1 + (ra.inbreeding || 0)) * (1 + (rb.inbreeding || 0)));
     }
 
     function makeRecord(fields, genotype, gv) {
@@ -1125,6 +1241,7 @@
       restore(id) { const r = rec(id); if (r) r.removed = false; },
       kinship,
       offspringInbreeding: (sireId, damId) => kinship(sireId, damId),
+      relatedness,
       predictFleece,
       predictGilded,
       checkSureGuesses,
@@ -1180,6 +1297,7 @@
     phenotypeOf, colorOf, colorKey, lookKey,
     litterProbabilities, normCdf,
     blankGuess, predictOutcomes, predictOffspring, checkLamb, checkSelf,
+    goalGenes, meetsGoal, goalStatus, predictGoal,
     createFlock, randomGenotype, inheritGenotype, mulberry32,
     simulateFamilies, simulateGildFamilies,
   };

@@ -976,10 +976,13 @@
       'from Rowan half the time, and so does Moss. When both do, there\'s a 50% chance it\'s the same one of Rowan\'s two copies. ' +
       'That gives ½ × ½ × ½ = <b>12.5%</b>.</p>' +
       inbreedingDiagram() +
-      '<table class="data"><thead><tr><th>Parents are…</th><th>Lamb\'s inbreeding</th></tr></thead><tbody>' +
-      '<tr><td>Unrelated</td><td>0%</td></tr><tr><td>First cousins</td><td>6.25%</td></tr><tr><td>Half-siblings</td><td>12.5%</td></tr>' +
-      '<tr><td>Full siblings</td><td>25%</td></tr><tr><td>Parent and offspring</td><td>25%</td></tr>' +
-      '<tr><td>Full siblings, two generations running</td><td>37.5%</td></tr></tbody></table>' +
+      '<p>Two numbers describe this. <b>Relatedness</b> is the share of genes two sheep have in common by descent: about half for ' +
+      'full siblings. A lamb\'s <b>inbreeding</b> is half its parents\' relatedness, when the parents aren\'t inbred themselves. ' +
+      'When you pick a mate in the flock, each candidate shows how related it is.</p>' +
+      '<table class="data"><thead><tr><th>Parents are…</th><th>Related</th><th>Lamb\'s inbreeding</th></tr></thead><tbody>' +
+      [['Unrelated', '0%', '0%'], ['First cousins', '12.5%', '6.25%'], ['Half-siblings', '25%', '12.5%'], ['Full siblings', '50%', '25%'],
+        ['Parent and offspring', '50%', '25%'], ['Full siblings, two generations running', '60%', '37.5%']]
+        .map(([who, rel, F]) => '<tr><td>' + who + '</td><td>' + rel + '</td><td>' + F + '</td></tr>').join('') + '</tbody></table>' +
       '<p>Inbreeding brings hidden recessives into the open, which helps detective work, but it has a cost. In this sandbox, every 10% of inbreeding ' +
       'pushes each fleece measurement about ' + pen10.toFixed(2) + ' standard deviations the wrong way (about ' + (pen10 * diam.sd).toFixed(1) + ' ' +
       diam.unit + ' coarser fiber) and makes an inbred ewe ' + Math.round(E.INBREEDING_LITTER_PENALTY * 10) + '% less likely to have twins or triplets.</p>';

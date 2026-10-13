@@ -148,6 +148,11 @@
       check('full-sib lamb records F = 25%', Math.abs(g2son.inbreeding - 0.25) < 1e-9);
       near('two generations of full-sib mating -> 37.5%', f.offspringInbreeding(g2son.id, g2dau.id), 0.375, 1e-9);
       check('generation numbers: founders 0, lambs 1, grandlambs 2', ram.gen === 0 && son.gen === 1 && g2son.gen === 2);
+      check('relatedness: unrelated 0, full siblings 50%, half siblings 25%, parent and lamb 50%',
+        f.relatedness(ram.id, ewe.id) === 0 && Math.abs(f.relatedness(son.id, daughter.id) - 0.5) < 1e-9 &&
+        Math.abs(f.relatedness(son.id, halfDaughter.id) - 0.25) < 1e-9 && Math.abs(f.relatedness(ram.id, daughter.id) - 0.5) < 1e-9);
+      near('inbred full siblings (F = 25%) are 60% related', f.relatedness(g2son.id, g2dau.id), 0.6, 1e-9);
+      check('a sheep is 100% related to itself', Math.abs(f.relatedness(son.id, son.id) - 1) < 1e-9);
     }
 
     // ------------------------------------------------------------------
@@ -277,6 +282,35 @@
       refused = false;
       try { f.breed(ram2.id, f.addSheep({ sex: 'ewe' }).id); } catch (e) { refused = true; }
       check('a used-up ram cannot be bred again', refused && f.breedingsLeft(ram2.id) === 0);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Breeding goals');
+    {
+      const L = (color, pattern, extra) => Object.assign({ sex: 'ewe', color, pattern, spotted: false, horned: false }, extra);
+      check('b/b does not meet a b/b goal on B/b', !E.meetsGoal(['normal', 'brown'], ['brown', 'brown']) && E.meetsGoal(['brown', 'brown'], ['brown', 'brown']));
+      check('"Abf / any" is met by Abf/Aa in either order', E.meetsGoal(['solid', 'badgerface'], ['badgerface', null]));
+      const bb = { brown: ['brown', 'brown'] };
+      check('goal b/b: a black sheep can\'t have it', E.goalStatus(L('black', 'solid'), guess(), bb).status === 'no');
+      check('goal b/b: a moorit sheep has it for sure', E.goalStatus(L('brown', 'solid'), guess(), bb).status === 'yes');
+      check('goal b/b: a white sheep might', E.goalStatus(L('white', 'none'), guess(), bb).status === 'maybe');
+      check('goal b/b: a white sheep noted B/? can\'t', E.goalStatus(L('white', 'none'), guess({ brown: ['normal', '?'] }), bb).status === 'no');
+      const both = E.goalStatus(L('black', 'solid'), guess(), { agouti: ['badgerface', 'badgerface'], extension: ['normal', 'normal'] });
+      check('a solid sheep can\'t be Abf/Abf and E+/E+ at once, though each alone is possible', both.status === 'no' && !both.together &&
+        both.genes.agouti === 'maybe' && both.genes.extension === 'maybe', JSON.stringify(both));
+      check('a badgerface sheep is E+/E+ for sure', E.goalStatus(L('black', 'badgerface'), guess(), { extension: ['normal', 'normal'] }).status === 'yes');
+      check('an empty goal gives no status', E.goalStatus(L('black', 'solid'), guess(), { brown: [null, null] }) === null);
+      const carriers = guess({ brown: ['normal', 'brown'], spotting: ['normal', 'spotted'] });
+      const p = E.predictGoal(carriers, carriers, { brown: ['brown', 'brown'], spotting: ['spotted', 'spotted'] });
+      check('B/b S/s x B/b S/s: 6.25% of lambs are b/b s/s', p.ewe.min === 0.0625 && p.ewe.max === 0.0625 && p.ram.min === 0.0625, JSON.stringify(p.ewe));
+      const q = E.predictGoal(guess({ brown: ['brown', '?'] }), guess({ brown: ['brown', 'brown'] }), bb);
+      check('b/? x b/b: 50-100% b/b, hinging on the ram', q.ewe.min === 0.5 && q.ewe.max === 1 && q.ewe.depends.some(d => d.parent === 'sire'), JSON.stringify(q.ewe));
+      const all = E.blankGuess(E.GENES);
+      const big = {};
+      for (const g of E.GENES) big[g.key] = [g.alleles[0].id, null];
+      const t0 = Date.now();
+      for (let i = 0; i < 20; i++) { E.predictGoal(all, all, big); E.goalStatus(L('black', 'solid', { shade: 'full', glow: false, speckled: false }), all, big); }
+      check('goal checks on every gene stay quick: ' + ((Date.now() - t0) / 20).toFixed(1) + ' ms', (Date.now() - t0) / 20 < 50);
     }
 
     // ------------------------------------------------------------------
