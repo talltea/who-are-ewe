@@ -51,13 +51,20 @@
   .brand { font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
   .tabs { display: flex; gap: 4px; height: 100%; }
   .tab {
-    border: 0; background: none; padding: 0 12px; height: 100%;
+    border: 0; background: none; padding: 0 12px; height: 100%; white-space: nowrap;
     color: var(--muted); font-weight: 550;
     border-bottom: 2px solid transparent;
   }
   .tab:hover { color: var(--ink); }
   .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
-  .file-actions { margin-left: auto; display: flex; gap: 4px; }
+  .file-actions { margin-left: auto; position: relative; }
+  .badge {
+    display: inline-block; margin-left: 8px; padding: 0 7px; vertical-align: 1px;
+    border: 1px solid var(--ink); border-radius: 999px;
+    font-size: 10.5px; line-height: 17px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .file-menu { display: flex; gap: 4px; }
+  .file-actions .file-toggle, .narrow-only { display: none; }
 
   /* ---------- buttons & fields ---------- */
   .btn {
@@ -71,6 +78,7 @@
   .btn:disabled { opacity: 0.45; cursor: default; background: var(--surface); }
   .btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
   .btn-primary:hover { background: var(--ink-2); }
+  .btn-primary:disabled { background: var(--ink); opacity: 0.3; }
   .btn-ghost { border-color: transparent; background: none; color: var(--muted); }
   .btn-ghost:hover { color: var(--ink); background: var(--hover); }
   .btn-small { min-height: 28px; padding: 0 10px; font-size: 13px; }
@@ -97,20 +105,27 @@
 
   /* ---------- swatches (the only color on the page) ---------- */
   .swatch {
+    --edge: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+    --gild: 0 0 #0000;
+    --halo: 0 0 #0000;
     position: relative; display: inline-block; flex: none; vertical-align: middle;
     border-radius: 50%;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+    box-shadow: var(--edge), var(--gild), var(--halo);
   }
-  .swatch.is-white { box-shadow: inset 0 0 0 1px #cbc4b3; }
-  .swatch-xs { width: 14px; height: 14px; }
-  .swatch-sm { width: 22px; height: 22px; }
-  .swatch-md { width: 44px; height: 44px; }
-  .swatch-lg { width: 60px; height: 60px; }
-  .swatch-xl { width: 84px; height: 84px; }
+  .swatch.is-white { --edge: inset 0 0 0 1px #cbc4b3; }
+  .swatch-xs { width: 14px; height: 14px; --ring: 1.5px; }
+  .swatch-sm { width: 22px; height: 22px; --ring: 2px; }
+  .swatch-md { width: 44px; height: 44px; --ring: 2.5px; }
+  .swatch-lg { width: 60px; height: 60px; --ring: 3px; }
+  .swatch-xl { width: 84px; height: 84px; --ring: 3.5px; }
   .swatch.is-spotted::after {
     content: ""; position: absolute; left: 54%; top: 22%; width: 30%; height: 30%;
     border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
   }
+  /* fantasy: gilded tips are a thin gold ring, lantern glow a soft warm halo */
+  .swatch.is-gilded { --gild: 0 0 0 var(--ring) #c9971f; }
+  .swatch.is-glowing { --halo: 0 0 calc(var(--ring) * 4) calc(var(--ring) * 1.6) rgba(255, 184, 60, 0.8); }
+  .swatch.is-empty { background: none; box-shadow: none; border: 1.5px dashed var(--line-strong); }
 
   /* ---------- flock view layout ---------- */
   .view-flock {
@@ -348,6 +363,9 @@
   .pen-slot.empty { border-style: dashed; font-size: 13px; }
   .pen-role { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   .pen-sheep { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font-weight: 600; }
+  .pen-left { font-size: 12px; color: var(--muted); }
+  .pen-left.none { color: var(--ink); font-weight: 600; }
+  .pen-note { margin: 8px 0 14px; font-size: 13px; color: var(--muted); }
   .pen-clear {
     position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;
     border: 0; border-radius: 50%; background: none; color: var(--faint); font-size: 16px; line-height: 1;
@@ -382,6 +400,44 @@
   }
   .range-foot { margin-top: 4px; font-size: 12px; color: var(--muted); }
 
+  /* ---------- fantasy genes ---------- */
+  .fantasy-notes { margin: 2px 0 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .fantasy-toggle {
+    display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 0;
+    border: 0; background: none; font-size: 13px; font-weight: 600; text-align: left;
+  }
+  .fantasy-toggle .chev { display: inline-block; width: 10px; color: var(--muted); transition: transform 0.15s; }
+  .fantasy-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .y-slot {
+    display: flex; align-items: center; justify-content: center; min-height: 30px; margin-right: 50px;
+    border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: help;
+  }
+  .slot.y { border-color: var(--line-strong); background: var(--surface); color: var(--muted); }
+  .flags li.rare, .card-flag.rare { background: var(--surface); border: 1px dashed var(--line-strong); }
+  .flags li.rare::before, .card-flag.rare .flag-dot { content: "~"; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .maybe-more { align-self: center; font-size: 12px; color: var(--muted); }
+  .parts { margin-top: 12px; }
+  .part-line { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  .part-vals { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 12px; }
+  .part-vals b { font-weight: 600; }
+
+  /* ---------- dialog ---------- */
+  .dialog {
+    width: min(440px, calc(100vw - 32px)); padding: 20px;
+    border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  }
+  .dialog::backdrop { background: rgba(29, 29, 27, 0.35); }
+  .dialog h2 { font-size: 18px; margin-bottom: 8px; }
+  .dialog p { margin: 0 0 14px; color: var(--muted); }
+  .option { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; cursor: pointer; }
+  .option:hover { background: var(--surface-2); }
+  .option input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--ink); }
+  .option b { display: block; margin-bottom: 2px; }
+  .option .muted { font-size: 13px; }
+  .option .dev-note { display: block; margin-top: 4px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
   /* ---------- toast ---------- */
   .toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 50;
@@ -391,7 +447,7 @@
     transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
     transition: opacity 0.2s, transform 0.2s;
   }
-  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; cursor: pointer; }
 
   /* ---------- guide ---------- */
   .guide {
@@ -540,6 +596,12 @@
   .pn-look { max-width: 112px; font-size: 11px; color: var(--muted); text-align: center; line-height: 1.25; }
   .pn-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 12px; font-size: 13px; }
   .pn-out { display: inline-flex; align-items: center; gap: 6px; }
+  .pn-sexline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; width: 100%; }
+  .pn-y {
+    display: flex; align-items: center; justify-content: center; min-height: 30px;
+    border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 600;
+  }
+  .pn-cell.is-lost { border-style: dashed; background: var(--surface-2); }
 
   /* tables */
   table.data { border-collapse: collapse; margin: 10px 0 16px; font-size: 13.5px; }
@@ -568,17 +630,24 @@
   .chart-title { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
   .chart-title b { color: var(--ink); }
   .chart-wrap { position: relative; }
-  #chart-svg { display: block; width: 100%; height: auto; touch-action: none; }
-  #chart-svg .grid { stroke: var(--line); stroke-width: 1; }
-  #chart-svg .axis { stroke: var(--line-strong); stroke-width: 1; }
-  #chart-svg .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  #chart-svg .axis-label { fill: var(--muted); font-size: 12px; }
-  #chart-svg .ref { stroke: var(--faint); stroke-width: 1.5; }
-  #chart-svg .trend { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
-  #chart-svg .line-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
-  #chart-svg .muted-label { fill: var(--muted); font-weight: 400; }
-  #chart-svg .dot { fill: var(--ink-2); fill-opacity: 0.55; stroke: var(--surface); stroke-width: 2; }
-  #chart-svg .dot.on { fill-opacity: 1; r: 6; }
+  .chart-svg { display: block; width: 100%; height: auto; touch-action: none; }
+  .chart-svg .grid { stroke: var(--line); stroke-width: 1; }
+  .chart-svg .axis { stroke: var(--line-strong); stroke-width: 1; }
+  .chart-svg .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart-svg .axis-label { fill: var(--muted); font-size: 12px; }
+  .chart-svg .ref { stroke: var(--faint); stroke-width: 1.5; }
+  .chart-svg .trend { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+  .chart-svg .line-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
+  .chart-svg .muted-label { fill: var(--muted); font-weight: 400; }
+  .chart-svg .dot { fill: var(--ink-2); fill-opacity: 0.55; stroke: var(--surface); stroke-width: 2; }
+  .chart-svg .dot.on { fill-opacity: 1; r: 6; }
+  .chart-svg .dot.gold { fill: #b8860b; fill-opacity: 0.9; }
+  .chart-svg .cut { stroke: #b8860b; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .chart-svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 6px; font-size: 12.5px; color: var(--ink-2); }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; vertical-align: -1px; }
+  .chart-legend .lg-gold { background: #b8860b; }
+  .chart-legend .lg-plain { background: var(--ink-2); opacity: 0.55; }
   .chart-tip {
     position: absolute; z-index: 2; pointer-events: none;
     padding: 6px 9px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-strong);
@@ -610,14 +679,31 @@
     .toolbar { position: static; }
     .side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
     .side-tabs { top: var(--topbar); }
+    /* Scrolled-to things land below the sticky top bar, not under it. */
+    .side { scroll-margin-top: var(--topbar); }
+    .card { scroll-margin-top: calc(var(--topbar) + 8px); }
     .guide { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 16px 60px; }
     .guide-toc { position: static; }
     .guide-toc ol { display: flex; flex-wrap: wrap; gap: 2px; }
     .builder { grid-template-columns: minmax(0, 1fr); }
   }
+  @media (max-width: 760px) {
+    /* No room beside the title: the badge sits under it. */
+    .badge { display: block; width: max-content; margin: 1px 0 0; padding: 0 5px; font-size: 9px; line-height: 13px; }
+  }
+  @media (max-width: 700px) {
+    .file-actions .file-toggle { display: inline-flex; }
+    .file-menu {
+      display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+      flex-direction: column; align-items: stretch; gap: 2px; min-width: 150px; padding: 6px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+    .file-menu .btn { justify-content: flex-start; }
+    .file-actions.open .file-menu { display: flex; }
+  }
   @media (max-width: 560px) {
     .topbar { gap: 10px; padding: 0 12px; }
-    .brand { display: none; }
     .toolbar, .flock-count, .grid { padding-left: 16px; padding-right: 16px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
     .side-body { padding: 16px; }
@@ -637,19 +723,27 @@
     table.data th, table.data td { padding-right: 10px; }
     .proves .look { white-space: normal; }
   }
+  @media (max-width: 480px) {
+    .wide-only { display: none; }
+    .narrow-only { display: inline; }
+    .tab { padding: 0 8px; }
+  }
 </style>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">Sheep Genetics Sandbox</div>
+  <div class="brand">Sheep <span class="wide-only">Genetics </span>Sandbox<span class="badge" id="fantasy-badge" hidden title="This flock has made-up fantasy genes">Fantasy</span></div>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" data-view="flock">Flock</button>
-    <button class="tab" role="tab" data-view="guide">Genetics guide</button>
+    <button class="tab" role="tab" data-view="guide"><span class="wide-only">Genetics guide</span><span class="narrow-only">Guide</span></button>
   </nav>
-  <div class="file-actions">
-    <button class="btn btn-ghost btn-small" data-act="export" title="Download your flock and notes as a file">Export</button>
-    <button class="btn btn-ghost btn-small" data-act="import" title="Load a flock file">Import</button>
-    <button class="btn btn-ghost btn-small" data-act="new" title="Start over with a new flock">New flock</button>
+  <div class="file-actions" id="file-actions">
+    <button class="btn btn-ghost btn-small file-toggle" data-act="file-menu" aria-expanded="false" aria-controls="file-menu">File ▾</button>
+    <div class="file-menu" id="file-menu">
+      <button class="btn btn-ghost btn-small" data-act="export" title="Download your flock and notes as a file">Export</button>
+      <button class="btn btn-ghost btn-small" data-act="import" title="Load a flock file">Import</button>
+      <button class="btn btn-ghost btn-small" data-act="new" title="Start over with a new flock">New flock</button>
+    </div>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
   </div>
 </header>
@@ -685,6 +779,23 @@
   </section>
   <section id="view-guide" hidden></section>
 </main>
+
+<dialog class="dialog" id="new-dialog" aria-labelledby="new-title">
+  <form method="dialog">
+    <h2 id="new-title">Start a new flock?</h2>
+    <p>Your current sheep and notes will be replaced. Export first if you want to keep them.</p>
+    <label class="option">
+      <input type="checkbox" id="new-fantasy">
+      <span><b>Include fantasy genes</b>
+        <span class="muted">Five made-up genes: dilution, hue, speckle, lantern and gilded. Each is a small example of a real way genes behave, explained in the guide.</span>
+        <span class="dev-note" id="new-dev" hidden></span></span>
+    </label>
+    <div class="dialog-actions">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn btn-primary" value="ok">Start new flock</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

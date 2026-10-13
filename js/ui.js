@@ -12,24 +12,34 @@
   const STORAGE_KEY = 'sheep-genetics-sandbox/v1';
   const FILE_FORMAT = 'sheep-genetics-sandbox';
   const MAX_OUTCOMES = 8;
+  const MAX_CHIPS = 24;
 
+  // Names that suit any sheep, plus given names that read as one sex.
   const NAMES = [
-    'Juniper', 'Bramble', 'Clover', 'Thistle', 'Hazel', 'Rowan', 'Willow', 'Fern', 'Moss', 'Heather',
-    'Sorrel', 'Bracken', 'Pip', 'Nettle', 'Tansy', 'Yarrow', 'Burdock', 'Sloe', 'Damson', 'Quince',
-    'Pippin', 'Medlar', 'Sage', 'Basil', 'Chicory', 'Fennel', 'Dill', 'Mallow', 'Campion', 'Vetch',
-    'Teasel', 'Woad', 'Madder', 'Weld', 'Alder', 'Birch', 'Aspen', 'Elder', 'Holly', 'Ivy',
-    'Larch', 'Linden', 'Maple', 'Hawthorn', 'Blackthorn', 'Gorse', 'Broom', 'Fog', 'Drizzle', 'Squall',
-    'Gale', 'Frost', 'Hail', 'Mist', 'Dew', 'Thaw', 'Sleet', 'Breeze', 'Tempest', 'Dusk',
-    'Dawn', 'Ember', 'Cinder', 'Soot', 'Flint', 'Pebble', 'Shale', 'Slate', 'Granite', 'Clay',
-    'Loam', 'Peat', 'Tweed', 'Fluff', 'Muffin', 'Crumpet', 'Scone', 'Bannock', 'Oatcake', 'Barley',
-    'Rye', 'Spelt', 'Biscuit', 'Toffee', 'Fudge', 'Treacle', 'Nutmeg', 'Clove', 'Ginger', 'Cocoa',
-    'Mocha', 'Pepper', 'Paprika', 'Saffron', 'Cumin', 'Caraway', 'Poppy', 'Daisy', 'Buttercup', 'Bluebell',
-    'Primrose', 'Cowslip', 'Snowdrop', 'Crocus', 'Iris', 'Violet', 'Pansy', 'Marigold', 'Dandelion', 'Lupin',
-    'Foxglove', 'Myrtle', 'Juno', 'Hamish', 'Morag', 'Fergus', 'Agnes', 'Dougal', 'Effie', 'Angus',
-    'Isla', 'Rory', 'Elspeth', 'Wilbur', 'Dolly', 'Lambert', 'Woolsey', 'Mabel', 'Ada', 'Otis',
-    'Pudding', 'Dumpling', 'Noodle', 'Waffle', 'Pickle', 'Button', 'Bobbin', 'Spindle', 'Skein', 'Purl',
-    'Bobble', 'Tufty', 'Haggis', 'Brodie', 'Ailsa', 'Kirsty', 'Hector', 'Nessie', 'Wren', 'Robin',
+    'Bramble', 'Clover', 'Thistle', 'Rowan', 'Moss', 'Sorrel', 'Bracken', 'Pip', 'Nettle', 'Yarrow',
+    'Burdock', 'Sloe', 'Damson', 'Quince', 'Pippin', 'Medlar', 'Sage', 'Chicory', 'Fennel', 'Dill',
+    'Mallow', 'Campion', 'Vetch', 'Teasel', 'Woad', 'Madder', 'Weld', 'Alder', 'Birch', 'Aspen',
+    'Elder', 'Larch', 'Linden', 'Maple', 'Hawthorn', 'Blackthorn', 'Gorse', 'Broom', 'Fog', 'Drizzle',
+    'Squall', 'Frost', 'Hail', 'Mist', 'Dew', 'Thaw', 'Sleet', 'Breeze', 'Tempest', 'Dusk',
+    'Cinder', 'Soot', 'Flint', 'Pebble', 'Shale', 'Slate', 'Granite', 'Clay', 'Loam', 'Peat',
+    'Tweed', 'Fluff', 'Muffin', 'Crumpet', 'Scone', 'Bannock', 'Oatcake', 'Barley', 'Rye', 'Spelt',
+    'Biscuit', 'Toffee', 'Fudge', 'Treacle', 'Nutmeg', 'Clove', 'Cocoa', 'Mocha', 'Pepper', 'Paprika',
+    'Cumin', 'Caraway', 'Crocus', 'Lupin', 'Foxglove', 'Dandelion', 'Pudding', 'Dumpling', 'Noodle', 'Waffle',
+    'Pickle', 'Button', 'Bobbin', 'Spindle', 'Skein', 'Purl', 'Bobble', 'Tufty', 'Haggis', 'Robin',
   ];
+  const SEX_NAMES = {
+    ram: [
+      'Angus', 'Hamish', 'Fergus', 'Dougal', 'Rory', 'Wilbur', 'Lambert', 'Woolsey', 'Otis', 'Brodie',
+      'Hector', 'Basil', 'Archie', 'Barnaby', 'Bertie', 'Cuthbert', 'Duncan', 'Ewan', 'Murdo', 'Rufus',
+      'Monty', 'Wallace', 'Lachlan', 'Torquil', 'Jasper', 'Ramsay', 'Alfie', 'Callum', 'Struan', 'Teddy',
+    ],
+    ewe: [
+      'Morag', 'Agnes', 'Effie', 'Isla', 'Elspeth', 'Dolly', 'Mabel', 'Ada', 'Ailsa', 'Kirsty',
+      'Nessie', 'Juno', 'Flora', 'Maisie', 'Shona', 'Peggy', 'Hettie', 'Winnie', 'Daisy', 'Violet',
+      'Iris', 'Poppy', 'Heather', 'Hazel', 'Ivy', 'Holly', 'Myrtle', 'Primrose', 'Willow', 'Fern',
+      'Juniper', 'Marigold', 'Pansy', 'Bluebell', 'Buttercup', 'Snowdrop', 'Cowslip', 'Tansy', 'Saffron', 'Wren',
+    ],
+  };
 
   // ------------------------------------------------------------- state
 
@@ -49,6 +59,7 @@
     renaming: false,
     removeArmed: false,
     lastLitter: null,
+    fantasyNotes: true,
   };
   const fresh = new Map(); // id -> time it arrived, for the highlight
   const FRESH_MS = 2400;
@@ -61,6 +72,16 @@
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pct = v => Math.round(v * 1000) / 10 + '%';
 
+  // The genes this flock has: the base ones, plus fantasy genes if it was started with them.
+  const genesOn = () => flock.activeGenes();
+  const hasGene = key => genesOn().some(g => g.key === key);
+
+  // Hidden dev flag: index.html?dev=opal puts unfinished fantasy genes in new fantasy flocks.
+  const DEV_GENES = (new URLSearchParams(location.search).get('dev') || '').split(',')
+    .filter(k => E.GENE[k] && E.GENE[k].dev);
+  // A ram's first slot of an X-linked gene is his Y, which has no allele.
+  const isY = (r, gene, i) => i === 0 && !!r && r.sex === 'ram' && !!E.GENE[gene].xLinked;
+
   // ------------------------------------------------------------- names
 
   function roman(n) {
@@ -71,10 +92,11 @@
     return s;
   }
 
-  function nameFor() {
+  function nameFor(sex) {
     const used = new Set(flock ? flock.list({ includeRemoved: true }).map(r => r.name) : []);
+    const names = NAMES.concat(SEX_NAMES[sex] || []);
     for (let k = 1; ; k++) {
-      const pool = NAMES.map(n => (k === 1 ? n : n + ' ' + roman(k))).filter(n => !used.has(n));
+      const pool = names.map(n => (k === 1 ? n : n + ' ' + roman(k))).filter(n => !used.has(n));
       if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
     }
   }
@@ -84,6 +106,16 @@
     return r ? r.name : 'unknown';
   }
 
+  // ---------------------------------------------------- breeding limits
+
+  const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+
+  function retired(r) { return flock.breedingsLeft(r.id) === 0; }
+
+  function retiredText(r) {
+    return r.name + ' has been bred ' + plural(r.litters.length, 'time') + ', the most a ' + r.sex + ' can be.';
+  }
+
   // ------------------------------------------------------------- notes
 
   // genes: two guess slots per gene. ruledOut: alleles the player says the
@@ -91,7 +123,7 @@
   function blankNote() {
     const genes = {};
     const ruledOut = {};
-    for (const g of E.GENES) {
+    for (const g of genesOn()) {
       genes[g.key] = [{ a: U, sure: false }, { a: U, sure: false }];
       ruledOut[g.key] = [];
     }
@@ -104,15 +136,18 @@
   }
 
   function guessOf(id) {
-    const guess = E.blankGuess();
+    const genes = genesOn();
+    const guess = E.blankGuess(genes);
     const n = notes[id];
     if (n) {
       guess.ruledOut = {};
-      for (const g of E.GENES) {
+      for (const g of genes) {
         guess[g.key] = n.genes[g.key].map(s => s.a);
         guess.ruledOut[g.key] = n.ruledOut[g.key].slice();
       }
     }
+    const r = flock.get(id);
+    for (const g of genes) if (isY(r, g.key, 0)) guess[g.key][0] = null;
     return guess;
   }
 
@@ -122,16 +157,18 @@
     for (const id of Object.keys(raw)) {
       if (!flock.get(id)) continue;
       const src = raw[id] || {};
+      const r = flock.get(id);
       const n = blankNote();
       if (typeof src.text === 'string') n.text = src.text;
-      for (const g of E.GENES) {
+      for (const g of genesOn()) {
         const slots = src.genes && src.genes[g.key];
         if (!Array.isArray(slots)) continue;
         slots.slice(0, 2).forEach((s, i) => {
+          if (isY(r, g.key, i)) return;
           if (s && (s.a === U || E.allele(g.key, s.a))) n.genes[g.key][i] = { a: s.a, sure: !!s.sure };
         });
       }
-      for (const g of E.GENES) {
+      for (const g of genesOn()) {
         const outs = src.ruledOut && src.ruledOut[g.key];
         if (!Array.isArray(outs)) continue;
         const valid = [...new Set(outs.filter(a => E.allele(g.key, a)))];
@@ -144,7 +181,7 @@
     return out;
   }
 
-  function alleleSym(gene, a) { return a === U ? '?' : E.allele(gene, a).sym; }
+  function alleleSym(gene, a) { return a === null ? 'Y' : a === U ? '?' : E.allele(gene, a).sym; }
 
   function guessSym(id, gene) {
     const g = guessOf(id);
@@ -153,9 +190,10 @@
       (out.length ? ', not ' + out.map(a => alleleSym(gene, a)).join(' or ') : '');
   }
 
-  function hasColorGuesses(id) {
+  // Has the player written anything about these genes for this sheep?
+  function hasGuesses(id, genes) {
     const g = guessOf(id);
-    return E.COLOR_GENES.some(k => g[k].some(a => a !== U) || (g.ruledOut && g.ruledOut[k].length));
+    return genes.some(k => g[k] && (g[k].some(a => a !== U && a !== null) || (g.ruledOut && g.ruledOut[k].length)));
   }
 
   // ------------------------------------------------------ checking work
@@ -167,7 +205,7 @@
     let count = 0;
     const n = notes[id];
     if (n) {
-      for (const g of E.GENES) {
+      for (const g of genesOn()) {
         sure[g.key] = n.genes[g.key].map(s => (s.sure && s.a !== U ? (count++, s.a) : null));
         ruledOut[g.key] = n.ruledOut[g.key].slice();
         count += ruledOut[g.key].length;
@@ -256,7 +294,7 @@
     if (!r.sire || !r.dam) return [];
     const sg = guessOf(r.sire);
     const dg = guessOf(r.dam);
-    const key = E.colorKey(r.phenotype) + '|' + r.sex + '|' + r.phenotype.horned + '|' + JSON.stringify(sg) + JSON.stringify(dg);
+    const key = E.lookKey(r.phenotype) + '|' + JSON.stringify(sg) + JSON.stringify(dg);
     let v = surpriseCache.get(key);
     if (!v) {
       if (surpriseCache.size > 5000) surpriseCache.clear();
@@ -279,10 +317,25 @@
   }
 
   function surpriseText(r, issues) {
-    return issues.flatMap(i => i.genes.map(g => culpritText(g, r))).join('; ');
+    return issues.filter(i => !i.rare).flatMap(i => i.genes.map(g => culpritText(g, r))).join('; ');
   }
 
-  // Lambs of r whose looks contradict r's guesses.
+  // What each part of a look is called in messages.
+  const PART_WORD = {
+    pattern: 'pattern', 'dark color': 'dark color', shade: 'shade', spots: 'spots',
+    horns: 'horns', opal: 'sheen', speckle: 'speckles', glow: 'glow',
+  };
+
+  // e.g. "Bramble's dark color (moorit)", with the name as a link.
+  function partHTML(sheep, trait) {
+    const word = trait === 'pattern' && sheep.phenotype.color === 'white' ? 'color' : PART_WORD[trait];
+    return '<button class="link" data-open="' + sheep.id + '">' + esc(sheep.name) + '</button>\'s ' + word +
+      ' (' + esc(D.part(sheep.phenotype, trait)) + ')';
+  }
+
+  const MUTATION_ODDS = 'about 1 in ' + Math.round(1 / E.SPECKLE_MUTATION_RATE) + ' passed-on alleles';
+
+  // Lambs of r whose looks contradict r's guesses, as { html, rare }.
   function parentFlags(r) {
     const out = [];
     for (const litter of r.litters) {
@@ -297,13 +350,17 @@
             const gene = E.GENE[gi.gene].name;
             const mine = 'your ' + gene + ' guess (' + guessSym(r.id, gi.gene) + ')';
             const theirs = esc(nameOf(other)) + "'s (" + guessSym(other, gi.gene) + ')';
-            const who = '<button class="link" data-open="' + lamb.id + '">' + esc(lamb.name) + '</button> (' + esc(D.title(lamb.phenotype)) +
-              (issue.trait === 'horns' ? ', ' + D.describe(lamb.phenotype).hornTag : '') + ')';
+            const who = partHTML(lamb, issue.trait);
+            if (issue.rare) {
+              out.push({ rare: true, html: '<b>Rare:</b> ' + who + ' would need a new mutation to fit ' + mine + ' and ' + theirs +
+                '. Mutations hit ' + MUTATION_ODDS + ', so a guess may be off instead.' });
+              continue;
+            }
             let html;
             if (gi.culprit === role) html = who + " can't come from " + mine + '.';
             else if (gi.culprit === 'either') html = who + ' means ' + mine + ' or ' + theirs + ' is off.';
             else html = who + ' means ' + mine + ' and ' + theirs + ' both need a change.';
-            out.push(html);
+            out.push({ html });
           }
         }
       }
@@ -317,11 +374,12 @@
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
       sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir, showRemoved: ui.showRemoved,
+      fantasyNotes: ui.fantasyNotes,
     };
   }
 
   function snapshot() {
-    return { format: FILE_FORMAT, version: 1, savedAt: new Date().toISOString(), flock: flock.exportState(), notes, ui: persistUi() };
+    return { format: FILE_FORMAT, version: 2, savedAt: new Date().toISOString(), flock: flock.exportState(), notes, ui: persistUi() };
   }
 
   let saveTimer = null;
@@ -363,6 +421,7 @@
     ui.sort = typeof u.sort === 'string' ? u.sort : 'born';
     ui.dir = u.dir === -1 ? -1 : 1;
     ui.showRemoved = !!u.showRemoved;
+    ui.fantasyNotes = u.fantasyNotes !== false;
     ui.lastLitter = null;
     ui.suggest = false;
     ui.renaming = false;
@@ -382,13 +441,14 @@
     }
   }
 
-  function starterFlock() {
+  function starterFlock(fantasy) {
+    const devGenes = fantasy ? DEV_GENES : [];
     const sexes = ['ewe', 'ram', 'ewe', 'ewe', 'ram', 'ewe', 'ram', 'ewe'];
     for (let attempt = 0; attempt < 80; attempt++) {
-      flock = E.createFlock({ nameFor });
-      const looks = sexes.map(sex => D.title(flock.addSheep({ sex }).phenotype));
-      const whites = looks.filter(t => t === 'White').length;
-      if (new Set(looks).size >= 4 && whites >= 2 && whites <= 4) break;
+      flock = E.createFlock({ nameFor, fantasy, devGenes });
+      const looks = sexes.map(sex => flock.addSheep({ sex }).phenotype);
+      const whites = looks.filter(l => l.color === 'white').length;
+      if (new Set(looks.map(D.title)).size >= 4 && whites >= 2 && whites <= 4) break;
     }
     notes = {};
     for (const r of flock.list()) noteFor(r.id);
@@ -433,7 +493,12 @@
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+    toastTimer = setTimeout(hideToast, 3200);
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    $('toast').classList.remove('show');
   }
 
   // ------------------------------------------------------------- grid
@@ -443,7 +508,7 @@
     if (ui.sex !== 'all') list = list.filter(r => r.sex === ui.sex);
     if (ui.allele) {
       const [gene, a] = ui.allele.split(':');
-      list = list.filter(r => notes[r.id] && notes[r.id].genes[gene].some(s => s.a === a));
+      list = list.filter(r => notes[r.id] && notes[r.id].genes[gene] && notes[r.id].genes[gene].some(s => s.a === a));
     }
     const trait = E.TRAIT[ui.sort];
     const key = trait ? r => r.phenotype.fleece[trait.key]
@@ -460,16 +525,18 @@
   function chipsHTML(id) {
     const n = notes[id];
     if (!n) return '';
+    const r = flock.get(id);
     const parts = [];
-    for (const g of E.GENES) {
+    for (const g of genesOn()) {
       const slots = n.genes[g.key];
       const outs = n.ruledOut[g.key];
       if (slots.every(s => s.a === U) && !outs.length) continue;
-      const tip = g.name + ': ' + slots.map(s => (s.a === U ? '?' : E.allele(g.key, s.a).plain + (s.sure ? ' (sure)' : ' (hunch)'))).join(' / ') +
+      const tip = g.name + ': ' + slots.map((s, i) => (isY(r, g.key, i) ? 'Y' : s.a === U ? '?' : E.allele(g.key, s.a).plain + (s.sure ? ' (sure)' : ' (hunch)'))).join(' / ') +
         (outs.length ? '; not ' + outs.map(a => E.allele(g.key, a).plain).join(' or ') : '');
       parts.push('<span class="gchip" title="' + esc(tip) + '"><span class="pair">' +
-        slots.map((s, i) => '<span class="slot ' + (s.a === U ? 'unk' : s.sure ? 'sure' : 'hunch') + (isWrong(id, g.key, i) ? ' wrong' : '') + '">' +
-          alleleSym(g.key, s.a) + '</span>').join('') + '</span>' +
+        slots.map((s, i) => (isY(r, g.key, i) ? '<span class="slot y">Y</span>'
+          : '<span class="slot ' + (s.a === U ? 'unk' : s.sure ? 'sure' : 'hunch') + (isWrong(id, g.key, i) ? ' wrong' : '') + '">' +
+          alleleSym(g.key, s.a) + '</span>')).join('') + '</span>' +
         outs.map(a => '<span class="slot out' + (isWrongOut(id, g.key, a) ? ' wrong' : '') + '">' + alleleSym(g.key, a) + '</span>').join('') +
         '</span>');
     }
@@ -490,15 +557,19 @@
     const stat = trait
       ? '<div class="card-stat">' + r.phenotype.fleece[trait.key].toFixed(1) + ' <small>' + trait.unit + '</small></div>'
       : '';
-    const flag = issues.length
-      ? '<div class="card-flag" title="This lamb looks impossible under your guesses. Check: ' + esc(surpriseText(r, issues)) + '">' +
-        '<span class="flag-dot">!</span><span>Surprise: ' + esc(surpriseText(r, issues)) + '</span></div>'
-      : '';
+    const real = issues.filter(i => !i.rare);
+    const flag = real.length
+      ? '<div class="card-flag" title="This lamb looks impossible under your guesses. Check: ' + esc(surpriseText(r, real)) + '">' +
+        '<span class="flag-dot">!</span><span>Surprise: ' + esc(surpriseText(r, real)) + '</span></div>'
+      : issues.length
+        ? '<div class="card-flag rare" title="Its parents\' guesses can\'t explain this lamb without a new mutation."><span class="flag-dot">~</span>' +
+          '<span>Rare: could be a new mutation</span></div>'
+        : '';
     const wrong = wrongGenes(r.id).map(k => E.GENE[k].name);
     const mistake = wrong.length
       ? '<div class="card-flag"><span class="flag-dot">✗</span><span>Wrong sure guess: ' + wrong.join(', ') + '</span></div>'
       : '';
-    const pen = r.removed ? '' :
+    const pen = r.removed || (retired(r) && !inPen) ? '' :
       '<button class="pen-btn" data-pen="' + r.id + '" title="' + (inPen ? 'In the breeding pen' : 'Put in the breeding pen') +
       '" aria-label="Put ' + esc(r.name) + ' in the breeding pen" aria-pressed="' + inPen + '">♥︎</button>';
     return '<div class="' + cls.join(' ') + '"' + (age < FRESH_MS ? ' style="animation-delay:-' + age + 'ms"' : '') +
@@ -506,7 +577,7 @@
       esc(r.name + ', ' + d.sex + ', ' + d.title) + '">' +
       '<div class="card-top">' + D.swatch(r.phenotype, 'md') + pen + '</div>' +
       '<div class="card-name"><span class="nm">' + esc(r.name) + '</span><span class="sex" title="' + d.sex + '">' + d.sexIcon + '</span></div>' +
-      '<div class="card-meta">Gen ' + r.gen + (r.removed ? ' · removed' : '') + '</div>' +
+      '<div class="card-meta">Gen ' + r.gen + (r.removed ? ' · removed' : retired(r) ? ' · retired' : '') + '</div>' +
       stat + chipsHTML(r.id) + mistake + flag +
       '</div>';
   }
@@ -563,11 +634,25 @@
   function litterText(r) {
     if (!r.litters.length) return 'No lambs yet';
     const total = r.litters.reduce((a, l) => a + l.lambs.length, 0);
-    if (r.sex === 'ram') return 'Sired ' + total + ' lamb' + (total === 1 ? '' : 's') + ' in ' + r.litters.length + ' litter' + (r.litters.length === 1 ? '' : 's');
-    return r.litters.map(l => l.lambs.length).join(' · ') + ' <span class="muted">(avg ' + (total / r.litters.length).toFixed(1) + ' per litter)</span>';
+    const lost = r.litters.reduce((a, l) => a + (l.lost || 0), 0);
+    const lostText = lost ? lost + ' didn\'t develop' : '';
+    if (r.sex === 'ram') {
+      return 'Sired ' + plural(total, 'lamb') + ' in ' + plural(r.litters.length, 'litter') + (lost ? ' <span class="muted">(' + lostText + ')</span>' : '');
+    }
+    return r.litters.map(l => l.lambs.length).join(' · ') + ' <span class="muted">(avg ' + (total / r.litters.length).toFixed(1) + ' per litter' +
+      (lost ? '; ' + lostText : '') + ')</span>';
+  }
+
+  function breedingsText(r) {
+    const left = flock.breedingsLeft(r.id);
+    const limit = E.BREEDING_LIMIT[r.sex];
+    return left ? left + ' of ' + limit + ' left' : 'All ' + limit + ' used. Retired from breeding';
   }
 
   function slotControl(id, gene, i) {
+    if (isY(flock.get(id), gene.key, i)) {
+      return '<span class="y-slot" title="A ram has one X chromosome. His other one is a Y from his sire, which has no ' + gene.name + ' allele.">Y</span>';
+    }
     const s = noteFor(id).genes[gene.key][i];
     const state = s.a === U ? 'unk' : s.sure ? 'sure' : 'hunch';
     const wrong = isWrong(id, gene.key, i);
@@ -608,7 +693,8 @@
 
   function suggestRow(r, gene) {
     const pick = (parentId, slot, label) => {
-      const alleles = [...new Set(guessOf(parentId)[gene.key].filter(a => a !== U))];
+      if (isY(r, gene.key, slot)) return '<span class="pick-group"><span class="faint">' + label + ' gave a Y</span></span>';
+      const alleles = [...new Set(guessOf(parentId)[gene.key].filter(a => a !== U && a !== null))];
       const chips = alleles.length
         ? alleles.map(a => '<button class="pick" data-pick data-gene="' + gene.key + '" data-slot="' + slot + '" data-allele="' + a + '" title="Use ' + esc(E.allele(gene.key, a).name) + '">' + alleleSym(gene.key, a) + '</button>').join('')
         : '<span class="faint">no guess</span>';
@@ -617,19 +703,35 @@
     return '<tr class="suggest-row"><td></td><td>' + pick(r.sire, 0, '♂︎') + '</td><td></td><td>' + pick(r.dam, 1, '♀︎') + '</td></tr>';
   }
 
+  // Fantasy genes in the notes: a group the player can fold away.
+  function fantasyNotesHTML(r, genes, row) {
+    if (!genes.length) return '';
+    const noted = genes.filter(g => hasGuesses(r.id, [g.key])).length;
+    return '<div class="fantasy-notes">' +
+      '<button class="fantasy-toggle" data-act="fantasy-notes" data-fk="fantasy-notes" aria-expanded="' + ui.fantasyNotes + '">' +
+      '<span class="chev" aria-hidden="true">▸</span>Fantasy genes' + (noted ? ' <span class="faint">· ' + noted + ' with notes</span>' : '') + '</button>' +
+      (ui.fantasyNotes
+        ? '<table class="notes-table">' + genes.map(row).join('') + '</table>' +
+          (r.sex === 'ram' && hasGene('opal') ? '<p class="hint">A ram has one X chromosome, so he has one Opal allele. The Y came from his sire.</p>' : '') +
+          '<p class="hint">Gilded tips have no row: they come from many genes at once, so there\'s no single gene to pin down. ' +
+          '<button class="link" data-view="guide" data-anchor="g-gilded">How gilded works</button></p>'
+        : '') +
+      '</div>';
+  }
+
   function notesHTML(r) {
     const n = noteFor(r.id);
     const hasParents = !!(r.sire && r.dam);
-    const flags = parentFlags(r).map(h => '<li>' + h + '</li>');
+    const flags = parentFlags(r).map(f => '<li' + (f.rare ? ' class="rare"' : '') + '>' + f.html + '</li>');
     for (const issue of E.checkSelf(r.phenotype, guessOf(r.id))) {
       const genes = issue.genes.map(g => E.GENE[g].name).join(' + ');
-      flags.push('<li>Your ' + genes + ' guess doesn\'t fit how ' + esc(r.name) + ' looks (' +
-        esc(issue.trait === 'horns' ? D.describe(r.phenotype).hornTag : D.title(r.phenotype)) + ').</li>');
+      flags.push('<li>Your ' + genes + ' guess doesn\'t fit ' + partHTML(r, issue.trait) + '.</li>');
     }
-    const rows = E.GENES.map(g =>
+    const row = g =>
       '<tbody class="gene-rows"><tr><th scope="row">' + g.name + '</th><td>' + slotControl(r.id, g, 0) + '</td><td class="slash">/</td><td>' + slotControl(r.id, g, 1) + '</td></tr>' +
-      outRow(r, g) + (ui.suggest && hasParents ? suggestRow(r, g) : '') + '</tbody>'
-    ).join('');
+      outRow(r, g) + (ui.suggest && hasParents ? suggestRow(r, g) : '') + '</tbody>';
+    const genes = genesOn();
+    const rows = genes.filter(g => !g.fantasy).map(row).join('');
     return '<section class="sp-sec">' +
       '<div class="sec-head"><h3>My notes</h3><div class="sec-actions">' +
       (hasParents ? '<button class="btn btn-small" data-act="suggest" aria-pressed="' + ui.suggest + '">' + (ui.suggest ? 'Hide parents\' alleles' : 'Suggest from parents') + '</button>' : '') +
@@ -640,6 +742,7 @@
       (flags.length ? '<ul class="flags">' + flags.join('') + '</ul>' : '') +
       (ui.suggest && hasParents ? '<p class="hint">Click an allele to use it: the left slot comes from the ram, the right from the ewe.</p>' : '') +
       '<table class="notes-table">' + rows + '</table>' +
+      fantasyNotesHTML(r, genes.filter(g => g.fantasy), row) +
       '<p class="hint">Solid chips are <b>sure</b>, outlined ones are a <b>hunch</b>. Click the label next to a slot to switch. ' +
       'Under <b>Doesn\'t have</b>, click an allele to rule it out: a "?" then means any allele that\'s left. Ruled-out alleles count as sure. ' +
       '<b>Check sure guesses</b> flags any sure guess that\'s wrong, without saying what\'s right.</p>' +
@@ -687,12 +790,19 @@
     if (!r.litters.length) return '';
     const rows = r.litters.slice().reverse().map(l => {
       const lambs = l.lambs.map(id => flock.get(id)).filter(Boolean);
-      return '<div class="litter"><span class="litter-mate">with ' + esc(nameOf(l.mate)) + '</span>' +
+      const lost = l.lost ? ' · ' + (l.lambs.length ? plural(l.lambs.length, 'lamb') : 'no lambs') + ' · ' + l.lost + ' didn\'t develop' : '';
+      return '<div class="litter"><span class="litter-mate">with ' + esc(nameOf(l.mate)) + lost + '</span>' +
         lambs.map(x => '<button class="lamb-chip" data-open="' + x.id + '" title="' + esc(D.title(x.phenotype) + ', ' + D.describe(x.phenotype).hornTag) + '">' +
           D.swatch(x.phenotype, 'xs') + esc(x.name) + ' <span class="faint">' + D.sexIcon(x.sex) + '</span></button>').join('') +
         '</div>';
     }).join('');
     return '<section class="sp-sec"><h3>Lambs</h3>' + rows + '</section>';
+  }
+
+  // Fantasy genes plus gilded, which isn't one gene but counts as one here.
+  function fantasyCount() {
+    const n = genesOn().filter(g => g.fantasy).length + E.LIABILITIES.length;
+    return ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'][n] || String(n);
   }
 
   function introHTML() {
@@ -703,8 +813,13 @@
       '<li><b>Click a sheep</b> to see its color, horns and fleece, and to write down your guesses about its genes.</li>' +
       '<li><b>Click ♥︎</b> on a ram and on a ewe to put them in the breeding pen.</li>' +
       '<li><b>Breed them</b> and compare the lambs with what your notes predicted. A lamb that doesn\'t fit your guesses gets a surprise flag.</li>' +
+      '<li><b>Plan your crosses.</b> A ram can be bred ' + E.BREEDING_LIMIT.ram + ' times and a ewe ' + E.BREEDING_LIMIT.ewe + ', then they retire.</li>' +
       '</ol>' +
       '<p class="muted">New to sheep genetics? The <button class="link" data-view="guide">Genetics guide</button> explains how it all works.</p>' +
+      (flock.fantasy
+        ? '<p class="muted">This flock has <b>fantasy genes</b>: ' + fantasyCount() + ' made-up genes, each a small example of a real way genes behave. ' +
+          'See <button class="link" data-view="guide" data-anchor="g-fantasy">Fantasy genes</button> in the guide.</p>'
+        : '') +
       '</div>';
   }
 
@@ -719,7 +834,9 @@
     const actions = r.removed
       ? '<button class="btn btn-small" data-act="restore">Return to flock</button>'
       : '<button class="btn btn-small" data-act="rename">Rename</button>' +
-        '<button class="btn btn-small" data-pen="' + r.id + '">♥︎ Put in pen</button>' +
+        (retired(r)
+          ? '<button class="btn btn-small" disabled title="' + esc(retiredText(r)) + '">♥︎ Retired</button>'
+          : '<button class="btn btn-small" data-pen="' + r.id + '">♥︎ Put in pen</button>') +
         '<button class="btn btn-small btn-danger' + (ui.removeArmed ? ' armed' : '') + '" data-act="remove">' + (ui.removeArmed ? 'Click again to remove' : 'Remove from flock') + '</button>';
     return '<div class="sp-head">' + D.swatch(r.phenotype, 'xl') +
       '<div class="sp-title">' + title + '<div class="muted">' + d.sex + ' · Generation ' + r.gen + ' · ' + parents + '</div></div></div>' +
@@ -727,11 +844,17 @@
       '<div class="sp-actions">' + actions + '</div>' +
       '<section class="sp-sec"><h3>What you can see</h3><dl class="traits">' +
       '<dt>Color</dt><dd>' + d.color + '</dd>' +
+      (flock.fantasy ? '<dt>Shade</dt><dd>' + d.shade + '</dd>' : '') +
       '<dt>Pattern</dt><dd>' + d.pattern + '</dd>' +
       '<dt>Spotting</dt><dd>' + d.spotting + '</dd>' +
+      (flock.fantasy
+        ? (hasGene('opal') ? '<dt>Sheen</dt><dd>' + d.sheen + '</dd>' : '') + '<dt>Speckles</dt><dd>' + d.speckles + '</dd>' +
+          '<dt>Tips</dt><dd>' + d.tips + '</dd><dt>Glow</dt><dd>' + d.glow + '</dd>'
+        : '') +
       '<dt>Horns</dt><dd>' + d.hornTag + '</dd>' +
       '<dt>Sex</dt><dd>' + d.sex + '</dd>' +
       '<dt>Litters</dt><dd>' + litterText(r) + '</dd>' +
+      '<dt>Breedings</dt><dd>' + breedingsText(r) + '</dd>' +
       '</dl>' + fleeceBars(r.phenotype.fleece) + '</section>' +
       notesHTML(r) + pedigreeHTML(r) + lambsHTML(r);
   }
@@ -740,7 +863,7 @@
 
   function rangeText(o) {
     if (o.min === o.max) return pct(o.min);
-    if (o.min === 0) return 'up to ' + pct(o.max);
+    if (o.min === 0 && o.max < 1) return 'up to ' + pct(o.max);
     return pct(o.min) + '–' + pct(o.max);
   }
 
@@ -767,11 +890,13 @@
     if (!r) return '<div class="pen-slot empty"><span class="pen-role">' + label + '</span><span class="faint">Click ♥︎ on a ' + sex + '</span></div>';
     return '<div class="pen-slot"><span class="pen-role">' + label + '</span>' +
       '<button class="pen-sheep" data-open="' + r.id + '">' + D.swatch(r.phenotype, 'md') + '<span>' + esc(r.name) + '</span></button>' +
+      '<span class="pen-left' + (retired(r) ? ' none' : '') + '">' + (retired(r) ? 'Retired' : plural(flock.breedingsLeft(r.id), 'breeding') + ' left') + '</span>' +
       '<button class="pen-clear" data-act="clear-' + sex + '" aria-label="Take ' + esc(r.name) + ' out of the pen" title="Take out of the pen">×</button></div>';
   }
 
   function colorPrediction(pred, ram, ewe) {
-    if (!hasColorGuesses(ram.id) && !hasColorGuesses(ewe.id)) {
+    const colorGenes = E.COLOR_GENES.filter(k => E.GENE[k] && genesOn().includes(E.GENE[k]));
+    if (!hasGuesses(ram.id, colorGenes) && !hasGuesses(ewe.id, colorGenes)) {
       return '<p class="hint">You haven\'t written color guesses for either parent yet, so every color is possible. ' +
         'Fill in their notes to sharpen this.</p>';
     }
@@ -784,13 +909,57 @@
       '<tr><td class="sw">' + D.swatch(o.value, 'sm') + '</td><td>' + esc(D.title(o.value)) +
       '</td><td class="num">' + rangeText(o) + '</td></tr>').join('');
     const extra = maybe.concat(likely.slice(MAX_OUTCOMES));
+    const more = extra.length - MAX_CHIPS;
     const chips = extra.length
       ? '<div class="maybe"><div class="maybe-head">' + (likely.length ? 'Also possible' : 'Possible looks') + '</div>' +
-        extra.map(o => '<span class="maybe-chip" title="' + esc(D.title(o.value)) + ': ' + rangeText(o) + '">' + D.swatch(o.value, 'xs') +
+        extra.slice(0, MAX_CHIPS).map(o => '<span class="maybe-chip" title="' + esc(D.title(o.value)) + ': ' + rangeText(o) + '">' + D.swatch(o.value, 'xs') +
           esc(D.title(o.value)) + ' <span class="faint">' + rangeText(o).replace('up to ', '≤ ') + '</span></span>').join('') +
+        (more > 0 ? '<span class="maybe-more">and ' + plural(more, 'more look') + '</span>' : '') +
         '</div>'
       : '';
-    return (rows ? '<table class="pred">' + rows + '</table>' : '') + chips + dependsLine(pred.colors, ram, ewe);
+    return (rows ? '<table class="pred">' + rows + '</table>' : '') + chips + colorPartsHTML(pred) + dependsLine(pred.colors, ram, ewe);
+  }
+
+  // Fantasy flocks: dark color and shade on their own, since combined looks get numerous.
+  function colorPartsHTML(pred) {
+    const parts = [['Dark color', pred.colorParts.dark, v => D.COLOR_NAME[v]], ['Shade', pred.colorParts.shade, v => D.SHADE_NAME[v]]];
+    if (!pred.colorParts.shade) return '';
+    return '<div class="parts"><div class="maybe-head">Lambs that aren\'t white, part by part</div>' + parts.map(([label, list, name]) =>
+      '<div class="part-line"><span>' + label + '</span><span class="part-vals">' +
+      list.map(o => '<span>' + name(o.value) + ' <b class="num">' + rangeText(o) + '</b></span>').join('') + '</span></div>').join('') +
+      '</div>';
+  }
+
+  const OPAL_WORD = { full: 'Opal', patchy: 'Patchy', none: 'Plain' };
+  const GLOW_WORD = { glow: 'Glowing', plain: 'Plain', lost: 'Not born' };
+
+  function outcomeLine(label, outcomes, word) {
+    return '<div class="horn-line"><span>' + label + '</span><span class="part-vals">' +
+      outcomes.map(o => '<span>' + word[o.key] + ' <b class="num">' + rangeText(o) + '</b></span>').join('') + '</span></div>';
+  }
+
+  function fantasyPrediction(pred, ram, ewe) {
+    const guessed = gene => hasGuesses(ram.id, [gene]) || hasGuesses(ewe.id, [gene]);
+    const gild = flock.predictGilded(ram.id, ewe.id);
+    return (pred.opal
+      ? '<h4>Opal <small>sex-linked</small></h4>' +
+        (guessed('opal')
+          ? outcomeLine('Ram lambs', pred.opal.ram, OPAL_WORD) + outcomeLine('Ewe lambs', pred.opal.ewe, OPAL_WORD) +
+            dependsLine(pred.opal.ram.concat(pred.opal.ewe), ram, ewe)
+          : '<p class="hint">No Opal guesses yet. Ram lambs get their one X from the ewe, ewe lambs get one X from each parent.</p>')
+      : '') +
+      '<h4>Speckles</h4>' +
+      (guessed('speckle')
+        ? '<div class="horn-line"><span>Speckled</span><span class="num">' + rangeText(pred.speckle) + '</span></div>' +
+          dependsLine([pred.speckle], ram, ewe) + '<p class="dep">Not counting new mutations (' + MUTATION_ODDS + ').</p>'
+        : '<p class="hint">No Speckle guesses yet.</p>') +
+      '<h4>Glow <small>two copies of L are lethal</small></h4>' +
+      (guessed('lantern')
+        ? outcomeLine('Lambs', pred.glow, GLOW_WORD) + dependsLine(pred.glow, ram, ewe)
+        : '<p class="hint">No Lantern guesses yet.</p>') +
+      '<h4>Gilded tips</h4>' +
+      '<div class="horn-line"><span>Chance per lamb</span><span class="num">about ' + Math.round(gild * 100) + '%</span></div>' +
+      '<p class="dep">From which parents and ancestors are gilded. Your notes don\'t change it.</p>';
   }
 
   function hornLine(h, sexWord) {
@@ -810,11 +979,17 @@
       '</div>';
   }
 
+  function lostText(lost, born) {
+    if (born) return (lost === 1 ? 'One' : lost) + ' didn\'t develop.';
+    return lost === 1 ? 'The lamb didn\'t develop.' : lost === 2 ? 'Neither twin developed.' : 'None of the triplets developed.';
+  }
+
   function lastLitterHTML() {
     const last = flock.lastBreeding();
     if (!last || last.id !== ui.lastLitter) return '';
     const lambs = last.lambs.map(id => flock.get(id)).filter(Boolean);
-    return '<div class="born"><div class="born-head">Born just now</div>' +
+    return '<div class="born"><div class="born-head">' + (lambs.length ? 'Born just now' : 'No lambs this time') +
+      (last.lost ? ' · ' + lostText(last.lost, lambs.length) : '') + '</div>' +
       lambs.map(x => '<button class="lamb-chip" data-open="' + x.id + '">' + D.swatch(x.phenotype, 'sm') + esc(x.name) +
         ' <span class="faint">' + D.sexIcon(x.sex) + ' ' + esc(D.title(x.phenotype)) + '</span></button>').join('') +
       '<button class="btn btn-small" data-act="undo">Undo this litter</button></div>';
@@ -831,20 +1006,32 @@
     const F = flock.offspringInbreeding(ram.id, ewe.id);
     const pred = E.predictOffspring(guessOf(ram.id), guessOf(ewe.id));
     const fleece = flock.predictFleece(ram.id, ewe.id);
-    const booGuessed = guessOf(ram.id).booroola.concat(guessOf(ewe.id).booroola).some(a => a !== U);
-    html += '<button class="btn btn-primary btn-wide" data-act="breed" data-fk="breed">Breed ' + esc(ram.name) + ' × ' + esc(ewe.name) + '</button>';
+    const guessed = gene => [guessOf(ram.id), guessOf(ewe.id)].some(g =>
+      g[gene].some(a => a !== U) || (g.ruledOut && g.ruledOut[gene].length));
+    const booGuessed = guessed('booroola');
+    const done = [ram, ewe].filter(retired);
+    html += '<button class="btn btn-primary btn-wide" data-act="breed" data-fk="breed"' + (done.length ? ' disabled' : '') + '>Breed ' +
+      esc(ram.name) + ' × ' + esc(ewe.name) + '</button>';
+    if (done.length) {
+      html += '<p class="pen-note">' + done.map(r => esc(retiredText(r))).join(' ') + ' Pick another ' +
+        (done.length === 2 ? 'pair' : done[0].sex) + ' to keep breeding.</p>';
+    }
     html += lastLitterHTML();
     html += '<div class="pen-meta">Lambs\' inbreeding <strong>' + pct(F) + '</strong>' +
       ' <span class="muted">· ' + (F > 0 ? inbreedingNote(F) : 'unrelated') + '</span></div>';
     html += '<section class="sp-sec"><h3>Predicted lambs <small>from your notes</small></h3>' +
       colorPrediction(pred, ram, ewe) +
-      '<h4>Horns</h4>' + hornLine(pred.horns.ram, 'Ram lambs') + hornLine(pred.horns.ewe, 'Ewe lambs') +
-      dependsLine([pred.horns.ram, pred.horns.ewe], ram, ewe) +
+      '<h4>Horns</h4>' +
+      (guessed('horns')
+        ? hornLine(pred.horns.ram, 'Ram lambs') + hornLine(pred.horns.ewe, 'Ewe lambs') +
+          dependsLine([pred.horns.ram, pred.horns.ewe], ram, ewe)
+        : '<p class="hint">No horn guesses yet, so lambs of either sex could be horned or polled.</p>') +
       '<h4>Booroola copies <small>shows in ewe lambs\' litters</small></h4>' +
       (booGuessed
         ? '<div class="boo">' + pred.booroola.map(o => '<span><b>' + o.value + '</b> ' + rangeText(o) + '</span>').join('') + '</div>' +
           dependsLine(pred.booroola, ram, ewe)
         : '<p class="hint">No Booroola guesses yet.</p>') +
+      (flock.fantasy ? fantasyPrediction(pred, ram, ewe) : '') +
       '</section>';
     html += '<section class="sp-sec"><h3>Fleece <small>80% of lambs land in this range</small></h3>' +
       E.TRAITS.map(t => fleeceRange(t, fleece[t.key], ram, ewe)).join('') +
@@ -881,10 +1068,26 @@
     $('view-flock').hidden = guide;
     $('view-guide').hidden = !guide;
     for (const b of document.querySelectorAll('.tab[data-view]')) b.setAttribute('aria-selected', String(b.dataset.view === ui.view));
-    if (guide) window.SheepGuide.render($('view-guide'));
+    if (guide) window.SheepGuide.render($('view-guide'), { fantasy: flock.fantasy, genes: genesOn().map(g => g.key) });
+  }
+
+  // Header badge and the allele filter follow the flock's genes.
+  let builtFor = null;
+  function renderFlockKind() {
+    $('fantasy-badge').hidden = !flock.fantasy;
+    const kind = genesOn().map(g => g.key).join();
+    if (builtFor === kind) return;
+    builtFor = kind;
+    const genes = genesOn();
+    if (ui.allele && !genes.some(g => ui.allele.startsWith(g.key + ':'))) ui.allele = '';
+    $('allele-filter').innerHTML = '<option value="">Anything</option>' + genes.map(g =>
+      '<optgroup label="' + g.name + (g.fantasy ? ' (fantasy)' : '') + '">' +
+      g.alleles.map(a => '<option value="' + g.key + ':' + a.id + '">' + esc(a.plain + '  ' + a.name) + '</option>').join('') +
+      '</optgroup>').join('');
   }
 
   function renderAll() {
+    renderFlockKind();
     renderView();
     renderToolbar();
     renderGrid();
@@ -917,6 +1120,7 @@
   function putInPen(id) {
     const r = flock.get(id);
     if (!r || r.removed) return;
+    if (retired(r)) { toast(retiredText(r)); return; }
     ui.pen[r.sex] = id;
     ui.side = 'breed';
     refresh();
@@ -925,14 +1129,18 @@
 
   function breed() {
     if (!ui.pen.ram || !ui.pen.ewe) return;
-    const { event, lambs } = flock.breed(ui.pen.ram, ui.pen.ewe);
+    const done = [ui.pen.ram, ui.pen.ewe].map(id => flock.get(id)).filter(retired);
+    if (done.length) { toast(retiredText(done[0])); return; }
+    const { event, lambs, lost } = flock.breed(ui.pen.ram, ui.pen.ewe);
     for (const l of lambs) { noteFor(l.id); fresh.set(l.id, Date.now()); }
     ui.lastLitter = event.id;
     refresh();
-    const first = document.querySelector('.card[data-id="' + lambs[0].id + '"]');
+    const first = lambs.length && document.querySelector('.card[data-id="' + lambs[0].id + '"]');
     if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    toast(lambs.length === 1 ? 'A lamb is born: ' + lambs[0].name + '.'
-      : lambs.length + ' lambs are born: ' + lambs.map(l => l.name).join(', ') + '.');
+    const born = !lambs.length ? 'No lambs this time.'
+      : lambs.length === 1 ? 'A lamb is born: ' + lambs[0].name + '.'
+      : lambs.length + ' lambs are born: ' + lambs.map(l => l.name).join(', ') + '.';
+    toast(born + (lost ? ' ' + lostText(lost, lambs.length) : ''));
   }
 
   function undo() {
@@ -1006,10 +1214,27 @@
 
   // ------------------------------------------------------------- events
 
+  function setFileMenu(open) {
+    $('file-actions').classList.toggle('open', open);
+    document.querySelector('[data-act="file-menu"]').setAttribute('aria-expanded', String(open));
+  }
+
   function onClick(e) {
     const t = e.target;
+    const menuOpen = $('file-actions').classList.contains('open');
+    if (menuOpen && !t.closest('[data-act="file-menu"]')) setFileMenu(false);
     const view = t.closest('[data-view]');
-    if (view) { ui.view = view.dataset.view; renderView(); save(); window.scrollTo(0, 0); return; }
+    if (view) {
+      ui.view = view.dataset.view;
+      hideToast();
+      renderView();
+      save();
+      const anchor = view.dataset.anchor && document.getElementById(view.dataset.anchor);
+      if (anchor) anchor.scrollIntoView();
+      else window.scrollTo(0, 0);
+      return;
+    }
+    if (t.closest('#toast')) { hideToast(); return; }
 
     const side = t.closest('[data-side]');
     if (side) { ui.side = side.dataset.side; renderSide(); save(); return; }
@@ -1059,6 +1284,7 @@
     const act = t.closest('[data-act]');
     if (act) {
       switch (act.dataset.act) {
+        case 'file-menu': setFileMenu(!menuOpen); break;
         case 'breed': breed(); break;
         case 'undo': undo(); break;
         case 'add': addRandom(); break;
@@ -1067,6 +1293,7 @@
         case 'remove': removeSelected(); break;
         case 'restore': flock.restore(ui.selected); refresh(); break;
         case 'suggest': ui.suggest = !ui.suggest; renderSide(); break;
+        case 'fantasy-notes': ui.fantasyNotes = !ui.fantasyNotes; renderSide(); save(); break;
         case 'check-one': if (ui.selected) { runCheck(ui.selected); refresh(); } break;
         case 'check-all': checkAll(); break;
         case 'clear-ram': ui.pen.ram = null; refresh(); break;
@@ -1075,12 +1302,11 @@
         case 'export': exportFlock(); break;
         case 'import': $('import-file').click(); break;
         case 'new':
-          if (confirm('Start a new flock? Your current sheep and notes will be replaced. Export first if you want to keep them.')) {
-            starterFlock();
-            saveNow();
-            renderAll();
-            toast('A fresh flock arrives.');
-          }
+          $('new-fantasy').checked = flock.fantasy;
+          $('new-dev').hidden = !DEV_GENES.length;
+          $('new-dev').textContent = 'Dev flag on: also ' + DEV_GENES.map(k => E.GENE[k].name).join(', ') + '.';
+          $('new-dialog').returnValue = '';
+          $('new-dialog').showModal();
           break;
       }
       return;
@@ -1109,6 +1335,11 @@
 
   function onKeydown(e) {
     const t = e.target;
+    if (e.key === 'Escape' && $('file-actions').classList.contains('open')) {
+      setFileMenu(false);
+      document.querySelector('[data-act="file-menu"]').focus();
+      return;
+    }
     if (t.id === 'rename-input') {
       if (e.key === 'Enter') { e.preventDefault(); finishRename(); }
       if (e.key === 'Escape') { ui.renaming = false; renderSide(); }
@@ -1122,11 +1353,16 @@
 
   // -------------------------------------------------------------- init
 
+  function newFlockClosed() {
+    if ($('new-dialog').returnValue !== 'ok') return;
+    const fantasy = $('new-fantasy').checked;
+    starterFlock(fantasy);
+    saveNow();
+    renderAll();
+    toast(fantasy ? 'A fresh flock arrives, with fantasy genes.' : 'A fresh flock arrives.');
+  }
+
   function buildControls() {
-    $('allele-filter').innerHTML = '<option value="">Anything</option>' + E.GENES.map(g =>
-      '<optgroup label="' + g.name + '">' +
-      g.alleles.map(a => '<option value="' + g.key + ':' + a.id + '">' + esc(a.plain + '  ' + a.name) + '</option>').join('') +
-      '</optgroup>').join('');
     $('sort-select').innerHTML =
       '<option value="born">Oldest first</option><option value="name">Name</option><option value="gen">Generation</option>' +
       '<optgroup label="Fleece">' + E.TRAITS.map(t => '<option value="' + t.key + '">' + t.name + '</option>').join('') + '</optgroup>';
@@ -1140,6 +1376,7 @@
     document.addEventListener('change', onChange);
     document.addEventListener('input', onInput);
     document.addEventListener('keydown', onKeydown);
+    $('new-dialog').addEventListener('close', newFlockClosed);
     window.addEventListener('pagehide', saveNow);
     renderAll();
     saveNow();

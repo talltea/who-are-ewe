@@ -97,9 +97,9 @@
     }
     {
       const f = E.createFlock({ rng: E.mulberry32(9), debug: true });
-      const ram = f.addSheep({ sex: 'ram', genotype: geno({}) });
       const sizes = [0, 0, 0];
       for (let i = 0; i < 1500; i++) {
+        const ram = f.addSheep({ sex: 'ram', genotype: geno({}) });
         const ewe = f.addSheep({ sex: 'ewe', genotype: geno({ booroola: ['carrier', 'carrier'] }) });
         sizes[f.breed(ram.id, ewe.id).lambs.length - 1]++;
       }
@@ -214,8 +214,8 @@
       const colored = { sex: 'ram', color: 'black', pattern: 'solid', spotted: false, horned: true };
       const white = E.checkLamb(colored,
         guess({ agouti: ['white', 'white'], horns: ['horned', '?'] }), guess({ agouti: ['white', 'solid'], horns: ['polled', 'polled'] }));
-      check('colored lamb from Aw/Aw ram: blames the ram\'s Agouti', white.length === 1 &&
-        white[0].trait === 'color' && white[0].genes[0].gene === 'agouti' && white[0].genes[0].culprit === 'sire', JSON.stringify(white));
+      check('colored lamb from Aw/Aw ram: blames the ram\'s Agouti, for its pattern', white.length === 1 &&
+        white[0].trait === 'pattern' && white[0].genes[0].gene === 'agouti' && white[0].genes[0].culprit === 'sire', JSON.stringify(white));
       const hornedEwe = { sex: 'ewe', color: 'white', pattern: 'none', spotted: false, horned: true };
       const h = E.checkLamb(hornedEwe, guess({ horns: ['horned', 'polled'] }), guess({ horns: ['polled', 'polled'] }));
       check('horned ewe lamb from H/P x P/P: blames the ewe\'s Horns guess',
@@ -238,7 +238,7 @@
       const lambGeno = f.peekGenotype(lambs[0].id);
       const sireGeno = f.peekGenotype(ram.id);
       const damGeno = f.peekGenotype(ewe.id);
-      check('each lamb allele comes from the matching parent', E.GENES.every(g =>
+      check('each lamb allele comes from the matching parent', E.BASE_GENES.every(g =>
         sireGeno[g.key].includes(lambGeno[g.key][0]) && damGeno[g.key].includes(lambGeno[g.key][1])));
       const state = f.exportState();
       const saved = JSON.stringify(state);
@@ -252,6 +252,31 @@
       check('undo removes the lambs', undone && f.list().length === 2 && !f.get(lambs[0].id));
       check('undo clears the litter history', ewe.litters.length === 0 && ram.litters.length === 0);
       check('nothing left to undo', !f.canUndo());
+    }
+
+    // ------------------------------------------------------------------
+    heading('Breeding limits');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(5) });
+      const ram = f.addSheep({ sex: 'ram' });
+      const ewe = f.addSheep({ sex: 'ewe' });
+      check('rams can be bred more often than ewes', E.BREEDING_LIMIT.ram > E.BREEDING_LIMIT.ewe,
+        'ram ' + E.BREEDING_LIMIT.ram + ', ewe ' + E.BREEDING_LIMIT.ewe);
+      check('a new ewe has every breeding left', f.breedingsLeft(ewe.id) === E.BREEDING_LIMIT.ewe);
+      for (let i = 0; i < E.BREEDING_LIMIT.ewe; i++) f.breed(ram.id, ewe.id);
+      check('each breeding uses one up', f.breedingsLeft(ewe.id) === 0 &&
+        f.breedingsLeft(ram.id) === E.BREEDING_LIMIT.ram - E.BREEDING_LIMIT.ewe);
+      let refused = false;
+      const before = f.list().length;
+      try { f.breed(ram.id, ewe.id); } catch (e) { refused = true; }
+      check('a used-up ewe cannot be bred again', refused && f.list().length === before);
+      f.undoLastBreeding();
+      check('undo gives the breeding back', f.breedingsLeft(ewe.id) === 1);
+      const ram2 = f.addSheep({ sex: 'ram' });
+      for (let i = 0; i < E.BREEDING_LIMIT.ram; i++) f.breed(ram2.id, f.addSheep({ sex: 'ewe' }).id);
+      refused = false;
+      try { f.breed(ram2.id, f.addSheep({ sex: 'ewe' }).id); } catch (e) { refused = true; }
+      check('a used-up ram cannot be bred again', refused && f.breedingsLeft(ram2.id) === 0);
     }
 
     // ------------------------------------------------------------------
@@ -297,6 +322,322 @@
       check('right ruled-out alleles pass', outRight.checked === 3 && outRight.wrong.length === 0, JSON.stringify(outRight));
       const outWrong = f.checkSureGuesses(ewe.id, {}, { brown: ['brown'] });
       check('ruling out an allele it has is flagged', outWrong.wrong.length === 1 && outWrong.wrong[0].ruledOut === 'brown', JSON.stringify(outWrong));
+    }
+
+    // ------------------------------------------------------------------
+    heading('Factored color predictions');
+    {
+      // The old way: try every "?" across all four color genes at once.
+      const COLOR4 = ['agouti', 'extension', 'brown', 'spotting'];
+      const brute = (s, d) => E.predictOutcomes(s, d, COLOR4, g => ({ key: E.colorKey(E.colorOf(g)), value: null }));
+      const r = E.mulberry32(2024);
+      const randomGuess = () => {
+        const g = E.blankGuess();
+        g.ruledOut = {};
+        for (const k of COLOR4) {
+          const ids = E.alleleIds(k);
+          g[k] = [0, 1].map(() => (r() < 0.45 ? '?' : ids[Math.floor(r() * ids.length)]));
+          g.ruledOut[k] = r() < 0.25 ? ids.filter(a => !g[k].includes(a) && r() < 0.5) : [];
+        }
+        return g;
+      };
+      const N = 400;
+      let worst = 0;
+      let mismatch = null;
+      for (let i = 0; i < N && !mismatch; i++) {
+        const s = randomGuess();
+        const d = randomGuess();
+        const old = brute(s, d);
+        const now = E.predictOffspring(s, d).colors;
+        if (old.length !== now.length) mismatch = 'pair ' + i + ': ' + old.length + ' looks before, ' + now.length + ' now';
+        for (const o of old) {
+          const n = now.find(x => x.key === o.key);
+          if (!n) { mismatch = 'pair ' + i + ': missing ' + o.key; break; }
+          worst = Math.max(worst, Math.abs(n.min - o.min), Math.abs(n.max - o.max));
+        }
+      }
+      check('same looks and ranges as before on ' + N + ' random pairs of base guesses', !mismatch && worst < 2e-4,
+        mismatch || 'largest difference ' + worst);
+      const p = E.predictOffspring(E.blankGuess(), E.blankGuess());
+      check('base guesses predict no fantasy genes', !p.opal && !p.speckle && !p.glow && !p.colorParts.shade);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Fantasy genes: looks');
+    const fbase = {
+      dilution: ['full', 'full'], hue: ['normal', 'normal'], opal: ['plain', 'plain'],
+      speckle: ['normal', 'normal'], lantern: ['plain', 'plain'],
+    };
+    const fgeno = (over, sex) => {
+      const g = Object.assign({}, base, fbase, over);
+      if (sex === 'ram' && !(over && over.opal)) g.opal = [null, 'plain'];
+      return g;
+    };
+    const flook = (over, sex) => E.phenotypeOf(fgeno(over, sex), sex || 'ewe');
+    const fguess = over => Object.assign(E.blankGuess(E.GENES), over);
+    {
+      check('D/D full, D/d dusk, d/d frost', flook({}).shade === 'full' &&
+        flook({ dilution: ['full', 'dilute'] }).shade === 'dusk' && flook({ dilution: ['dilute', 'dilute'] }).shade === 'frost');
+      check('hue hides brown: Hur/Hur on a b/b sheep is rose', flook({ hue: ['rose', 'rose'], brown: ['brown', 'brown'] }).color === 'rose');
+      check('Hur/Hub is violet; one hue allele shows nothing',
+        flook({ hue: ['rose', 'blue'] }).color === 'violet' && flook({ hue: ['blue', 'normal'] }).color === 'black');
+      const white = flook({ agouti: ['white', 'solid'], hue: ['blue', 'blue'], dilution: ['dilute', 'dilute'] });
+      check('white hides hue and dilution', white.color === 'white' && white.shade === 'full');
+      const surface = flook({ agouti: ['white', 'white'], opal: ['opal', 'opal'], speckle: ['speckled', 'speckled'], lantern: ['glow', 'plain'] });
+      check('white still shows opal, speckles and glow', surface.opal === 'full' && surface.speckled && surface.glow);
+      check('opal: a ram with one opal X is opal, a ewe with one is patchy',
+        flook({ opal: [null, 'opal'] }, 'ram').opal === 'full' && flook({ opal: ['opal', 'plain'] }).opal === 'patchy');
+      check('a base genotype has no fantasy fields', !['shade', 'opal', 'speckled', 'glow'].some(k => k in look({})));
+      const f = E.createFlock({ rng: E.mulberry32(8) });
+      check('a base flock\'s sheep have base genes only', !('opal' in f.addSheep({}).phenotype) && f.activeGenes().length === E.BASE_GENES.length);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Fantasy genes: ratios (20,000 lambs each)');
+    function fratio(sireOver, damOver, predicate, sex) {
+      const s = fgeno(sireOver, 'ram');
+      const d = fgeno(damOver);
+      let hit = 0;
+      const n = 20000;
+      for (let i = 0; i < n; i++) {
+        const g = E.inheritGenotype(rng, s, d, sex || 'ewe');
+        if (predicate(E.phenotypeOf(g, sex || 'ewe'), g)) hit++;
+      }
+      return hit / n;
+    }
+    {
+      const Dd = { dilution: ['full', 'dilute'] };
+      near('D/d x D/d -> dusk ≈ 50%', fratio(Dd, Dd, l => l.shade === 'dusk'), 0.5, 0.015);
+      near('D/d x D/d -> frost ≈ 25%', fratio(Dd, Dd, l => l.shade === 'frost'), 0.25, 0.015);
+      const violet = { hue: ['rose', 'blue'] };
+      near('violet x violet -> rose ≈ 25%', fratio(violet, violet, l => l.color === 'rose'), 0.25, 0.015);
+      near('violet x violet -> violet ≈ 50%', fratio(violet, violet, l => l.color === 'violet'), 0.5, 0.015);
+      near('violet x violet -> blue ≈ 25%', fratio(violet, violet, l => l.color === 'blue'), 0.25, 0.015);
+      const p = E.predictOffspring(fguess(Object.assign({}, known, { agouti: ['solid', 'solid'], dilution: ['full', 'dilute'], hue: ['rose', 'blue'] })),
+        fguess(Object.assign({}, known, { agouti: ['solid', 'solid'], dilution: ['full', 'dilute'], hue: ['rose', 'blue'] })));
+      const at = (color, shade) => (p.colors.find(o => o.value.color === color && o.value.shade === shade) || {}).min;
+      check('predicted: dusk violet 25%, frost rose 6.25%', at('violet', 'dusk') === 0.25 && at('rose', 'frost') === 0.0625,
+        p.colors.map(o => E.colorKey(o.value) + ' ' + pct(o.min)).join('; '));
+    }
+
+    // ------------------------------------------------------------------
+    heading('Opal (X-linked, dev only)');
+    {
+      const plainFantasy = E.createFlock({ rng: E.mulberry32(30), fantasy: true, debug: true });
+      const someone = plainFantasy.addSheep({ sex: 'ram' });
+      check('fantasy flocks leave opal out unless asked', !plainFantasy.activeGenes().some(g => g.key === 'opal') &&
+        !('opal' in someone.phenotype) && !('opal' in plainFantasy.peekGenotype(someone.id)));
+      check('dev genes need fantasy genes too', !E.createFlock({ devGenes: ['opal'] }).activeGenes().some(g => g.key === 'opal'));
+      const f = E.createFlock({ rng: E.mulberry32(31), fantasy: true, devGenes: ['opal'], debug: true });
+      check('devGenes: [\'opal\'] adds it', f.activeGenes().some(g => g.key === 'opal'));
+      let rams = 0;
+      let ewes = 0;
+      let ramOk = true;
+      let eweOk = true;
+      for (let i = 0; i < 300; i++) {
+        const ram = f.addSheep({ sex: 'ram', genotype: fgeno({ opal: [null, 'opal'] }, 'ram') });
+        const ewe = f.addSheep({ sex: 'ewe', genotype: fgeno({ opal: ['plain', 'plain'] }) });
+        for (const l of f.breed(ram.id, ewe.id).lambs) {
+          const g = f.peekGenotype(l.id).opal;
+          if (l.sex === 'ram') { rams++; if (g[0] !== null || g[1] !== 'plain') ramOk = false; }
+          else { ewes++; if (g[0] !== 'opal' || g[1] !== 'plain') eweOk = false; }
+        }
+      }
+      check('opal ram x plain ewe: ' + rams + ' ram lambs, all with only their dam\'s plain X', ramOk && rams > 100);
+      check('opal ram x plain ewe: ' + ewes + ' ewe lambs, all carrying their sire\'s opal X', eweOk && ewes > 100);
+      const founderRam = f.addSheep({ sex: 'ram' });
+      check('founder rams store [null, X]', f.peekGenotype(founderRam.id).opal[0] === null);
+      const p = E.predictOffspring(fguess({ opal: [null, 'opal'] }), fguess({ opal: ['opal', 'plain'] }));
+      const share = (sex, key) => (p.opal[sex].find(o => o.key === key) || { min: 0 }).min;
+      check('opal ram x patchy ewe: ram lambs 50% opal, ewe lambs 50% full and 50% patchy',
+        share('ram', 'full') === 0.5 && share('ram', 'none') === 0.5 && share('ewe', 'full') === 0.5 && share('ewe', 'patchy') === 0.5,
+        JSON.stringify(p.opal));
+      const q = E.predictOffspring(fguess({ opal: [null, '?'] }), fguess({ opal: ['plain', 'plain'] }));
+      check('plain ewe: ram lambs never opal, whatever the ram', q.opal.ram.every(o => o.key === 'none'));
+      const opalSon = { sex: 'ram', color: 'white', pattern: 'none', spotted: false, horned: false, opal: 'full' };
+      const issue = E.checkLamb(opalSon, fguess({ opal: [null, 'opal'] }), fguess({ opal: ['plain', 'plain'] }));
+      check('opal ram lamb from a plain ewe: blames only the ewe', issue.length === 1 && issue[0].trait === 'opal' &&
+        issue[0].genes[0].culprit === 'dam', JSON.stringify(issue));
+      const self = E.checkSelf({ sex: 'ewe', color: 'white', pattern: 'none', spotted: false, horned: false, opal: 'patchy' },
+        fguess({ opal: ['opal', 'opal'] }));
+      check('patchy ewe guessed XO/XO: own guess flagged', self.length === 1 && self[0].trait === 'opal');
+    }
+
+    // ------------------------------------------------------------------
+    heading('Speckle (mutation)');
+    {
+      const s = fgeno({});
+      const n = 40000;
+      let mutated = 0;
+      for (let i = 0; i < n; i++) {
+        const g = E.inheritGenotype(rng, s, s, 'ewe');
+        mutated += (g.speckle[0] === 'speckled') + (g.speckle[1] === 'speckled');
+      }
+      near('St/St x St/St: mutation rate per gamete', mutated / (2 * n), E.SPECKLE_MUTATION_RATE, 0.001);
+      const speckled = { sex: 'ewe', color: 'black', pattern: 'solid', spotted: false, horned: false, speckled: true };
+      const one = E.checkLamb(speckled, fguess({ speckle: ['speckled', 'speckled'] }), fguess({ speckle: ['normal', 'normal'] }));
+      check('speckled lamb from st/st x St/St: rare, could be a new mutation', one.length === 1 && one[0].rare && one[0].trait === 'speckle',
+        JSON.stringify(one));
+      const two = E.checkLamb(speckled, fguess({ speckle: ['normal', 'normal'] }), fguess({ speckle: ['normal', 'normal'] }));
+      check('speckled lamb from St/St x St/St: a real surprise', two.length === 1 && !two[0].rare && two[0].genes[0].culprit === 'both',
+        JSON.stringify(two));
+      const p = E.predictOffspring(fguess({ speckle: ['normal', 'speckled'] }), fguess({ speckle: ['normal', 'speckled'] }));
+      check('St/st x St/st: 25% speckled', p.speckle.min === 0.25 && p.speckle.max === 0.25);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Lantern (lethal)');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(41), fantasy: true, debug: true });
+      let LL = false;
+      for (let i = 0; i < 3000; i++) {
+        const g = f.peekGenotype(f.addSheep({}).id).lantern;
+        if (g[0] === 'glow' && g[1] === 'glow') LL = true;
+      }
+      check('3000 founders, none L/L', !LL);
+      let born = 0;
+      let glowing = 0;
+      let lost = 0;
+      let empty = 0;
+      let recorded = true;
+      const Lp = { lantern: ['glow', 'plain'] };
+      for (let i = 0; i < 2000; i++) {
+        const ram = f.addSheep({ sex: 'ram', genotype: fgeno(Lp, 'ram') });
+        const ewe = f.addSheep({ sex: 'ewe', genotype: fgeno(Lp) });
+        const res = f.breed(ram.id, ewe.id);
+        lost += res.lost;
+        if (!res.lambs.length) empty++;
+        if ((ewe.litters[0].lost || 0) !== res.lost || (res.event.lost || 0) !== res.lost) recorded = false;
+        for (const l of res.lambs) {
+          born++;
+          if (l.phenotype.glow) glowing++;
+          const g = f.peekGenotype(l.id).lantern;
+          if (g[0] === 'glow' && g[1] === 'glow') LL = true;
+        }
+      }
+      check('no living lamb is L/L', !LL);
+      near('L/+ x L/+: glowing among born lambs ≈ 2/3', glowing / born, 2 / 3, 0.02);
+      near('L/+ x L/+: lambs lost ≈ 25%', lost / (born + lost), 0.25, 0.02);
+      check('losses are stored on the litter; ' + empty + ' litters were empty', recorded && empty > 0);
+      const p = E.predictOffspring(fguess(Lp), fguess(Lp));
+      check('predicted: glowing 50%, plain 25%, not born 25%', p.glow.map(o => o.key + ' ' + o.min).join() === 'glow 0.5,plain 0.25,lost 0.25',
+        JSON.stringify(p.glow));
+      const q = E.predictOffspring(fguess({ lantern: ['glow', '?'] }), fguess({ lantern: ['?', 'glow'] }));
+      check('L/? x ?/L: a living parent isn\'t L/L, so it\'s 50% / 25% / 25% exactly', q.glow.map(o => o.key + ' ' + o.min + '-' + o.max).join() ===
+        'glow 0.5-0.5,plain 0.25-0.25,lost 0.25-0.25', JSON.stringify(q.glow));
+      const self = E.checkSelf({ sex: 'ewe', color: 'white', pattern: 'none', spotted: false, horned: false, glow: true }, fguess({ lantern: ['glow', 'glow'] }));
+      check('a guess of L/L on a living sheep is flagged', self.length === 1 && self[0].trait === 'glow');
+    }
+
+    // ------------------------------------------------------------------
+    heading('Gilded (threshold)');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(51), fantasy: true, debug: true });
+      const N = 6000;
+      for (let i = 0; i < N; i++) f.addSheep({});
+      const founders = f.list();
+      near('founders gilded ≈ 16%', founders.filter(r => r.phenotype.gilded).length / N, 1 - E.normCdf(1), 0.015);
+      check('the hidden score never shows on the record', !/gild"?\s*:\s*-?\d/.test(JSON.stringify(founders[0])));
+      // Each call uses fresh sheep, so nobody runs out of breedings.
+      const used = new Set();
+      const lambRate = (ramGilded, eweGilded) => {
+        const pick = (sex, gilded) => founders.filter(r => r.sex === sex && r.phenotype.gilded === gilded && !used.has(r.id)).slice(0, 300);
+        const rams = pick('ram', ramGilded);
+        const ewes = pick('ewe', eweGilded);
+        for (const r of rams.concat(ewes)) used.add(r.id);
+        let n = 0;
+        let g = 0;
+        let predicted = 0;
+        for (let i = 0; i < Math.min(rams.length, ewes.length); i++) {
+          predicted += f.predictGilded(rams[i].id, ewes[i].id);
+          for (let k = 0; k < E.BREEDING_LIMIT.ewe; k++) {
+            for (const l of f.breed(rams[i].id, ewes[i].id).lambs) { n++; if (l.phenotype.gilded) g++; }
+          }
+        }
+        return { rate: g / n, predicted: predicted / Math.min(rams.length, ewes.length) };
+      };
+      const both = lambRate(true, true);
+      const one = lambRate(true, false);
+      const none = lambRate(false, false);
+      check('lamb rate rises with parent status: ' + [none, one, both].map(x => pct(x.rate)).join(' < '),
+        none.rate < one.rate && one.rate < both.rate);
+      near('gilded x gilded: predicted chance close to what happens', both.predicted, both.rate, 0.05);
+      near('plain x plain: predicted chance close to what happens', none.predicted, none.rate, 0.05);
+      check('no gilded prediction without fantasy genes', E.createFlock({}).predictGilded('s1', 's2') === null);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Fantasy surprises name the part of the look');
+    {
+      const dusk = { sex: 'ewe', color: 'black', pattern: 'solid', spotted: false, shade: 'dusk', horned: false };
+      const a = E.checkLamb(dusk, fguess({ dilution: ['full', 'full'] }), fguess({ dilution: ['full', 'full'] }));
+      check('dusk lamb from D/D x D/D: a shade issue, one parent is wrong', a.length === 1 && a[0].trait === 'shade' && a[0].genes[0].culprit === 'either',
+        JSON.stringify(a));
+      const frost = Object.assign({}, dusk, { shade: 'frost' });
+      const a2 = E.checkLamb(frost, fguess({ dilution: ['full', 'full'] }), fguess({ dilution: ['full', 'full'] }));
+      check('frost lamb from D/D x D/D: both parents are wrong', a2.length === 1 && a2[0].genes[0].culprit === 'both', JSON.stringify(a2));
+      const violet = { sex: 'ewe', color: 'violet', pattern: 'solid', spotted: false, shade: 'full', horned: false };
+      const b = E.checkLamb(violet, fguess({ hue: ['normal', 'normal'] }), fguess({ hue: ['rose', 'blue'] }));
+      check('violet lamb from a Hu+/Hu+ ram: a dark color issue on the ram\'s Hue', b.length === 1 && b[0].trait === 'dark color' &&
+        b[0].genes.length === 1 && b[0].genes[0].gene === 'hue' && b[0].genes[0].culprit === 'sire', JSON.stringify(b));
+      const white = { sex: 'ewe', color: 'white', pattern: 'none', spotted: false, shade: 'full', horned: false };
+      check('a white lamb ignores hue and dilution guesses', E.checkLamb(white,
+        fguess({ agouti: ['white', 'solid'], hue: ['rose', 'rose'] }), fguess({ hue: ['rose', 'rose'], dilution: ['dilute', 'dilute'] })).length === 0);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Speed');
+    {
+      const all = E.blankGuess(E.GENES);
+      const mixed = () => {
+        const g = E.blankGuess(E.GENES);
+        for (const gene of E.GENES) g[gene.key] = ['?', gene.alleles[gene.alleles.length - 1].id];
+        return g;
+      };
+      let slowest = 0;
+      for (const [s, d] of [[all, all], [mixed(), mixed()], [all, mixed()]]) {
+        const t0 = Date.now();
+        for (let i = 0; i < 10; i++) E.predictOffspring(s, d);
+        slowest = Math.max(slowest, (Date.now() - t0) / 10);
+      }
+      check('predictOffspring on every gene with "?" slots: ' + slowest.toFixed(1) + ' ms', slowest < 50);
+    }
+
+    // ------------------------------------------------------------------
+    heading('Saving v1 and v2 flocks');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(61), fantasy: true, debug: true });
+      const ram = f.addSheep({ sex: 'ram' });
+      const ewe = f.addSheep({ sex: 'ewe' });
+      f.breed(ram.id, ewe.id);
+      const state = JSON.parse(JSON.stringify(f.exportState()));
+      check('a v2 save says it has fantasy genes', state.v === 2 && state.fantasy === true);
+      check('the hidden part is still encoded', !/opal|lantern|gild|dilution/.test(state.secret));
+      const g = E.createFlock({ debug: true });
+      g.importState(state);
+      check('loading restores fantasy genes and hidden scores', g.fantasy &&
+        JSON.stringify(g.peekGenotype(ram.id)) === JSON.stringify(f.peekGenotype(ram.id)) &&
+        g.peekValues(ewe.id).gild === f.peekValues(ewe.id).gild && g.activeGenes().length === E.GENES.length - 1);
+      const d = E.createFlock({ rng: E.mulberry32(63), fantasy: true, devGenes: ['opal'], debug: true });
+      d.addSheep({});
+      const dState = JSON.parse(JSON.stringify(d.exportState()));
+      const d2 = E.createFlock({ debug: true });
+      d2.importState(dState);
+      check('a flock made with opal keeps it after loading', d2.activeGenes().some(x => x.key === 'opal'));
+      delete dState.devGenes;
+      const d3 = E.createFlock({ debug: true });
+      d3.importState(dState);
+      check('older saves with opal genotypes keep opal too', d3.activeGenes().some(x => x.key === 'opal'));
+      const b = E.createFlock({ rng: E.mulberry32(62), debug: true });
+      const only = b.addSheep({});
+      check('a base flock saves as v2 without fantasy', b.exportState().v === 2 && b.exportState().fantasy === false);
+      const v1 = JSON.parse(JSON.stringify(b.exportState()));
+      v1.v = 1;
+      delete v1.fantasy;
+      const h = E.createFlock({ fantasy: true, debug: true });
+      h.importState(v1);
+      check('a v1 save loads as a flock without fantasy genes', !h.fantasy && h.activeGenes().length === E.BASE_GENES.length &&
+        !('opal' in h.peekGenotype(only.id)));
     }
 
     print('');

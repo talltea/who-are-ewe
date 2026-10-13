@@ -1,15 +1,18 @@
 /* Sheep Genetics Sandbox: Genetics guide.
  *
  * Teaches with made-up sheep only. It uses the engine's phenotype rules and
- * the flock's display helper, and never looks at the player's flock.
+ * the flock's display helper. The only thing it knows about the player's
+ * flock is whether it has fantasy genes, which adds a section.
  */
 (function () {
   'use strict';
 
   const E = window.SheepEngine;
   const D = window.SheepDisplay;
-  const COLOR = E.COLOR_GENES;
-  let mounted = false;
+  const COLOR = ['agouti', 'extension', 'brown', 'spotting'];
+  let mounted = null; // which genes the page on screen was built for
+  let withOpal = false; // Opal is a dev-only fantasy gene
+  let chartTrait = 'diameter';
 
   const BASE = {
     agouti: ['solid', 'solid'], extension: ['normal', 'normal'], brown: ['normal', 'normal'],
@@ -22,7 +25,20 @@
     return g;
   }
 
-  const sym = (gene, a) => E.allele(gene, a).sym;
+  const FANTASY_BASE = {
+    dilution: ['full', 'full'], hue: ['normal', 'normal'], opal: ['plain', 'plain'],
+    speckle: ['normal', 'normal'], lantern: ['plain', 'plain'],
+  };
+
+  // A genotype with the fantasy genes too, all plain unless given.
+  function fgeno(over) {
+    const g = geno(over);
+    for (const k of Object.keys(FANTASY_BASE)) g[k] = ((over && over[k]) || FANTASY_BASE[k]).slice();
+    return g;
+  }
+
+  // A ram's Y has no allele: it's stored as null.
+  const sym = (gene, a) => (a === null ? 'Y' : E.allele(gene, a).sym);
   const pairSym = (gene, p) => sym(gene, p[0]) + '/' + sym(gene, p[1]);
   const pct = v => Math.round(v * 1000) / 10 + '%';
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -104,7 +120,7 @@
       '<div class="finish-a">' + tells + '</div></div>';
   }
 
-  function flowHTML() {
+  function flowHTML(fantasy) {
     const Ep2 = S.Ep + '/' + S.Ep;
     const bf = { agouti: ['badgerface', 'solid'] };
     return '<div class="flow">' +
@@ -127,13 +143,63 @@
         '<li><b>Both:</b> ' + S.Abf + '/' + S.Amf + '</li></ul>',
         'whether a badgerface or mouflon sheep carries ' + S.Aa + '.') +
       '</div>' +
-      '<div class="finish"><div class="finish-head">Then, for any sheep that isn\'t white, two more questions:</div>' +
+      '<div class="finish"><div class="finish-head">Then, for any sheep that isn\'t white, ' + (fantasy ? 'a few' : 'two') + ' more questions:</div>' +
       finishRow('Is the dark color moorit rather than black?',
         chip(bf) + '<span class="faint">or</span>' + chip({ agouti: ['badgerface', 'solid'], brown: ['brown', 'brown'] }),
         '<b>Moorit:</b> ' + S.b + '/' + S.b + '.<br><b>Black:</b> at least one ' + S.B + '; it may carry ' + S.b + '.') +
       finishRow('Does it have white patches?',
         chip({}) + '<span class="faint">or</span>' + chip({ spotting: ['spotted', 'spotted'] }),
         '<b>Patches:</b> ' + S.s + '/' + S.s + '.<br><b>No patches:</b> at least one ' + S.S + '; it may carry ' + S.s + '.') +
+      (fantasy ? fantasyFinishRows() : '') +
+      '</div>' +
+      (fantasy ? fantasySurfaceBox() : '');
+  }
+
+  // ------------------------------------------------- fantasy: reading a sheep
+
+  const F = {
+    D: sym('dilution', 'full'), d: sym('dilution', 'dilute'),
+    Hp: sym('hue', 'normal'), Hr: sym('hue', 'rose'), Hb: sym('hue', 'blue'),
+    XO: sym('opal', 'opal'), Xp: sym('opal', 'plain'),
+    St: sym('speckle', 'normal'), st: sym('speckle', 'speckled'),
+    L: sym('lantern', 'glow'), Lp: sym('lantern', 'plain'),
+  };
+
+  // Small swatch for a fantasy look. extra adds fields genes don't give, like gilded.
+  function fchip(over, label, extra) {
+    const look = Object.assign(E.phenotypeOf(fgeno(over), (extra && extra.sex) || 'ewe'), extra && extra.look);
+    return '<span class="look-chip">' + D.swatch(look, 'sm') + esc(label || D.title(look)) + '</span>';
+  }
+
+  function fantasyFinishRows() {
+    return finishRow('<span class="tag">Fantasy</span> Is the dark color rose, blue or violet?',
+        fchip({ hue: ['rose', 'rose'] }) + fchip({ hue: ['rose', 'blue'] }) + fchip({ hue: ['blue', 'blue'] }),
+        '<b>Rose:</b> ' + F.Hr + '/' + F.Hr + '. <b>Blue:</b> ' + F.Hb + '/' + F.Hb + '. <b>Violet:</b> ' + F.Hr + '/' + F.Hb + '. ' +
+        'Hue hides Brown, so its brown alleles are unknown.<br><b>Black or moorit:</b> at least one ' + F.Hp + '.') +
+      finishRow('<span class="tag">Fantasy</span> Is it dusk or frost?',
+        fchip({}, 'Full') + fchip({ dilution: ['full', 'dilute'] }, 'Dusk') + fchip({ dilution: ['dilute', 'dilute'] }, 'Frost'),
+        '<b>Full:</b> ' + F.D + '/' + F.D + '. <b>Dusk:</b> ' + F.D + '/' + F.d + '. <b>Frost:</b> ' + F.d + '/' + F.d + '. The shade shows both alleles.');
+  }
+
+  function fantasySurfaceBox() {
+    const white = { agouti: ['white', 'solid'] };
+    return '<div class="finish"><div class="finish-head"><span class="tag">Fantasy</span> For any sheep, white or not: ' +
+      (withOpal ? 'sheen? ' : '') + 'speckles? gilded tips? glow?</div>' +
+      (withOpal
+        ? finishRow('Does it have an opal sheen?',
+          fchip(Object.assign({ opal: ['opal', 'plain'] }, white)) + fchip(Object.assign({ opal: ['opal', 'opal'] }, white)),
+          '<b>A ram:</b> his one X is ' + F.XO + ', or ' + F.Xp + ' if he has none.<br><b>A ewe:</b> patchy is ' + F.XO + '/' + F.Xp +
+          ', full opal ' + F.XO + '/' + F.XO + ', no sheen ' + F.Xp + '/' + F.Xp + '.')
+        : '') +
+      finishRow('Does it have gold speckles?',
+        fchip({ speckle: ['speckled', 'speckled'] }) + fchip(Object.assign({ speckle: ['speckled', 'speckled'] }, white)),
+        '<b>Speckles:</b> ' + F.st + '/' + F.st + '.<br><b>None:</b> at least one ' + F.St + '; it may carry ' + F.st + '.') +
+      finishRow('Does it have gilded tips?',
+        fchip({}, 'Gilded', { look: { gilded: true } }) + fchip(white, 'White, gilded', { look: { gilded: true } }),
+        'Its hidden score passed the cutoff. There are no alleles to write down: see <a href="#g-gilded">Gilded</a>.') +
+      finishRow('Does it glow?',
+        fchip({ lantern: ['glow', 'plain'] }) + fchip(Object.assign({ lantern: ['glow', 'plain'] }, white)),
+        '<b>Glowing:</b> ' + F.L + '/' + F.Lp + ', always. ' + F.L + '/' + F.L + ' lambs don\'t develop.<br><b>No glow:</b> ' + F.Lp + '/' + F.Lp + '.') +
       '</div>';
   }
 
@@ -250,15 +316,39 @@
       dam: geno({ agouti: ['white', 'white'], horns: ['horned', 'polled'] }),
     },
     testCross: { genes: ['agouti'], sire: geno({ agouti: ['white', 'mouflon'] }), dam: geno({}) },
+    // Fantasy genes. plain: show only the square's gene, not the color genotype.
+    dilution: { genes: ['dilution'], plain: true, sire: fgeno({ dilution: ['full', 'dilute'] }), dam: fgeno({ dilution: ['full', 'dilute'] }) },
+    hue: {
+      genes: ['hue'], plain: true,
+      sire: fgeno({ hue: ['rose', 'blue'], brown: ['brown', 'brown'] }), dam: fgeno({ hue: ['rose', 'blue'], brown: ['brown', 'brown'] }),
+    },
+    opal: {
+      genes: ['opal'], plain: true,
+      sire: fgeno({ agouti: ['white', 'white'], opal: [null, 'plain'] }), dam: fgeno({ agouti: ['white', 'white'], opal: ['opal', 'plain'] }),
+    },
+    speckle: { genes: ['speckle'], plain: true, sire: fgeno({ speckle: ['normal', 'speckled'] }), dam: fgeno({ speckle: ['normal', 'speckled'] }) },
+    lantern: { genes: ['lantern'], plain: true, sire: fgeno({ lantern: ['glow', 'plain'] }), dam: fgeno({ lantern: ['glow', 'plain'] }) },
   };
+
+  // What a parent can pass on. A ram passes his X to daughters and his Y (null) to sons.
+  function passes(cfg, parent, gene) {
+    const pair = cfg[parent][gene];
+    return E.GENE[gene].xLinked && parent === 'sire' ? [pair[1], null] : pair;
+  }
 
   function gametes(cfg, parent) {
     let out = [{}];
     for (const gene of cfg.genes) {
       const next = [];
-      for (const partial of out) for (const a of cfg[parent][gene]) next.push(Object.assign({}, partial, { [gene]: a }));
+      for (const partial of out) for (const a of passes(cfg, parent, gene)) next.push(Object.assign({}, partial, { [gene]: a }));
       out = next;
     }
+    return out;
+  }
+
+  function cloneGeno(g) {
+    const out = {};
+    for (const k of Object.keys(g)) out[k] = g[k].slice();
     return out;
   }
 
@@ -267,10 +357,15 @@
     const g = cfg[parent];
     const look = E.phenotypeOf(g, sex);
     const d = D.describe(look);
-    const note = cfg.bySex ? '' : hidingNote(g);
+    // A parent with two lethal alleles could never have been born.
+    const lethal = E.GENES.find(gene => gene.lethal && g[gene.key] && g[gene.key].every(a => a === gene.lethal));
+    const note = lethal ? 'Can\'t exist: ' + g[lethal.key].map(a => E.allele(lethal.key, a).plain).join('/') + ' lambs don\'t develop'
+      : cfg.bySex || cfg.plain ? '' : hidingNote(g);
     const selects = cfg.genes.map(gene =>
       '<div class="pn-gene"><span>' + E.GENE[gene].name + '</span>' +
-      alleleSelect('data-pn="' + key + '" data-parent="' + parent + '" data-gene="' + gene + '" data-i="0"', gene, g[gene][0], d.sex + ' ' + E.GENE[gene].name + ' allele 1') +
+      (g[gene][0] === null
+        ? '<span class="pn-y" title="A ram\'s second sex chromosome is a Y, with no ' + E.GENE[gene].name + ' allele">Y</span>'
+        : alleleSelect('data-pn="' + key + '" data-parent="' + parent + '" data-gene="' + gene + '" data-i="0"', gene, g[gene][0], d.sex + ' ' + E.GENE[gene].name + ' allele 1')) +
       '<span class="faint">/</span>' +
       alleleSelect('data-pn="' + key + '" data-parent="' + parent + '" data-gene="' + gene + '" data-i="1"', gene, g[gene][1], d.sex + ' ' + E.GENE[gene].name + ' allele 2') +
       '</div>').join('');
@@ -278,7 +373,7 @@
       '<div class="pn-who">' + D.swatch(look, 'md') + '<div><b>' + d.sex + ' ' + d.sexIcon + '</b>' +
       '<div class="muted">' + esc(cfg.bySex ? d.hornTag : D.title(look)) + '</div>' +
       (note ? '<div class="ex-note">' + esc(note) + '</div>' : '') + '</div></div>' +
-      (cfg.bySex ? '' : '<div class="pn-geno">' + gtLine(g) + '</div>') +
+      (cfg.bySex || cfg.plain ? '' : '<div class="pn-geno">' + gtLine(g) + '</div>') +
       selects + '</div>';
   }
 
@@ -288,13 +383,19 @@
     const dg = gametes(cfg, 'dam');
     const label = gm => cfg.genes.map(k => sym(k, gm[k])).join(' ');
     const share = 1 / (sg.length * dg.length);
+    const xGene = cfg.genes.find(k => E.GENE[k].xLinked);
     const tally = new Map();
+    const count = (k, look) => {
+      const t = tally.get(k) || { key: k, look, p: 0 };
+      t.p += share;
+      tally.set(k, t);
+    };
     let rows = '';
     for (const s of sg) {
       rows += '<tr><th scope="row" class="pn-gam">' + label(s) + '</th>';
       for (const d of dg) {
         // Genes not in the square are the same in both parents.
-        const g = geno(cfg.sire);
+        const g = cloneGeno(cfg.sire);
         for (const k of cfg.genes) g[k] = [s[k], d[k]];
         const gt = cfg.genes.map(k => pairSym(k, g[k])).join(' ');
         if (cfg.bySex) {
@@ -304,25 +405,38 @@
           if (ewe.horned) tally.set('ewe', (tally.get('ewe') || 0) + share);
           rows += '<td><div class="pn-cell"><span class="pn-gt">' + gt + '</span>' +
             '<span class="tag">' + D.describe(ram).hornTag + '</span><span class="tag">' + D.describe(ewe).hornTag + '</span></div></td>';
+        } else if (E.GENES.some(gene => gene.lethal && cfg.genes.includes(gene.key) && g[gene.key].every(a => a === gene.lethal))) {
+          count('lost', null);
+          rows += '<td><div class="pn-cell is-lost">' + D.emptySwatch('sm', 'Doesn\'t develop') + '<span class="pn-gt">' + gt + '</span>' +
+            '<span class="pn-look">doesn\'t develop</span></div></td>';
         } else {
-          const look = E.phenotypeOf(g, 'ewe');
-          const k = E.colorKey(look);
-          const t = tally.get(k) || { look, p: 0 };
-          t.p += share;
-          tally.set(k, t);
+          // In an X-linked square, a Y from the ram makes a son.
+          const sex = xGene && s[xGene] === null ? 'ram' : 'ewe';
+          const look = E.phenotypeOf(g, sex);
+          count((xGene ? sex + ':' : '') + D.title(look), look);
           const note = isDomBlack(g) && !isWhite(g) && agoutiPattern(g) !== 'solid' ? PATTERN_WORD[agoutiPattern(g)] + ' hidden' : '';
           rows += '<td><div class="pn-cell">' + D.swatch(look, 'sm') + '<span class="pn-gt">' + gt + '</span>' +
-            '<span class="pn-look">' + esc(D.title(look)).replace('/', '/<wbr>') + (note ? '<br>(' + note + ')' : '') + '</span></div></td>';
+            '<span class="pn-look">' + (xGene ? D.sexIcon(sex) + ' ' : '') + esc(D.title(look)).replace('/', '/<wbr>') +
+            (note ? '<br>(' + note + ')' : '') + '</span></div></td>';
         }
       }
       rows += '</tr>';
     }
     const head = '<tr><th class="pn-corner"><span>Ram ↓</span><span>Ewe →</span></th>' +
       dg.map(d => '<th scope="col" class="pn-gam">' + label(d) + '</th>').join('') + '</tr>';
-    const summary = cfg.bySex
-      ? ['ram', 'ewe'].map(sex => '<span class="pn-out"><b>' + (sex === 'ram' ? 'Ram lambs' : 'Ewe lambs') + '</b> ' + pct(tally.get(sex) || 0) + ' horned</span>').join('')
-      : [...tally.values()].sort((a, b) => b.p - a.p).map(t =>
-        '<span class="pn-out">' + D.swatch(t.look, 'xs') + esc(D.title(t.look)) + ' <b>' + pct(t.p) + '</b></span>').join('');
+    const out = (t, p) => '<span class="pn-out">' + (t.look ? D.swatch(t.look, 'xs') + esc(D.title(t.look)) : D.emptySwatch('xs') + 'Not born') +
+      ' <b>' + pct(p) + '</b></span>';
+    const byChance = [...tally.values()].sort((a, b) => b.p - a.p);
+    let summary;
+    if (cfg.bySex) {
+      summary = ['ram', 'ewe'].map(sex => '<span class="pn-out"><b>' + (sex === 'ram' ? 'Ram lambs' : 'Ewe lambs') + '</b> ' + pct(tally.get(sex) || 0) + ' horned</span>').join('');
+    } else if (xGene) {
+      // Half the lambs are sons and half daughters, so show each sex out of its own half.
+      summary = ['ewe', 'ram'].map(sex => '<span class="pn-sexline"><b>' + (sex === 'ram' ? 'Ram lambs' : 'Ewe lambs') + '</b>' +
+        byChance.filter(t => t.key.startsWith(sex + ':')).map(t => out(t, t.p * 2)).join('') + '</span>').join('');
+    } else {
+      summary = byChance.map(t => out(t, t.p)).join('');
+    }
     return '<div class="pn-parents">' + parentHTML(key, cfg, 'sire') + '<span class="pn-x">×</span>' + parentHTML(key, cfg, 'dam') + '</div>' +
       '<div class="pn-scroll"><table class="pn-grid">' + head + rows + '</table></div>' +
       '<div class="pn-summary"><span class="faint">Lambs</span>' + summary + '</div>';
@@ -438,10 +552,10 @@
   function chartHTML() {
     return '<div class="chart-card">' +
       '<div class="seg" role="group" aria-label="Fleece trait">' +
-      E.TRAITS.map(t => '<button data-trait="' + t.key + '" aria-pressed="' + (t.key === 'diameter') + '">' + t.name + '</button>').join('') +
+      E.TRAITS.map(t => '<button data-trait="' + t.key + '" aria-pressed="' + (t.key === chartTrait) + '">' + t.name + '</button>').join('') +
       '</div>' +
       '<div class="chart-title" id="chart-title"></div>' +
-      '<div class="chart-wrap" id="chart-wrap"><svg id="chart-svg" viewBox="0 0 600 360" role="img"></svg>' +
+      '<div class="chart-wrap" id="chart-wrap"><svg class="chart-svg" id="chart-svg" viewBox="0 0 600 360" role="img"></svg>' +
       '<div class="chart-tip" id="chart-tip" hidden></div></div>' +
       '<p class="chart-note" id="chart-note"></p>' +
       '<details class="chart-table"><summary>Show the numbers</summary><div id="chart-table"></div></details>' +
@@ -510,38 +624,208 @@
       families.map(f => '<tr><td>' + f.sire.toFixed(1) + '</td><td>' + f.dam.toFixed(1) + '</td><td>' + f.parentAvg.toFixed(1) +
         '</td><td>' + f.lamb.toFixed(1) + '</td></tr>').join('') + '</tbody></table>';
 
-    // Nearest-point tooltip.
-    const tip = root.querySelector('#chart-tip');
-    const wrap = root.querySelector('#chart-wrap');
+    nearestTip(root, 'chart', families, f => [px(f.parentAvg), py(f.lamb)], W, H, f =>
+      '<b>' + f.lamb.toFixed(1) + ' ' + t.unit + '</b> lamb<br><span>parents ' + f.sire.toFixed(1) + ' & ' +
+      f.dam.toFixed(1) + ' (avg ' + f.parentAvg.toFixed(1) + ')</span>');
+  }
+
+  // Tooltip for the dot nearest the pointer. prefix names the chart's elements.
+  function nearestTip(root, prefix, points, at, W, H, html) {
+    const svgEl = root.querySelector('#' + prefix + '-svg');
+    const tip = root.querySelector('#' + prefix + '-tip');
+    const wrap = root.querySelector('#' + prefix + '-wrap');
     let active = null;
     svgEl.onpointermove = ev => {
       const box = svgEl.getBoundingClientRect();
       const sx = (ev.clientX - box.left) / box.width * W;
       const sy = (ev.clientY - box.top) / box.height * H;
       let best = -1, bestD = 18 * 18;
-      families.forEach((f, i) => {
-        const dd = (px(f.parentAvg) - sx) ** 2 + (py(f.lamb) - sy) ** 2;
+      points.forEach((f, i) => {
+        const [x, y] = at(f);
+        const dd = (x - sx) ** 2 + (y - sy) ** 2;
         if (dd < bestD) { bestD = dd; best = i; }
       });
       if (active) active.classList.remove('on');
       if (best < 0) { tip.hidden = true; active = null; return; }
-      const f = families[best];
+      const f = points[best];
+      const [x, y] = at(f);
       active = svgEl.querySelector('circle[data-i="' + best + '"]');
       active.classList.add('on');
-      tip.innerHTML = '<b>' + f.lamb.toFixed(1) + ' ' + t.unit + '</b> lamb<br><span>parents ' + f.sire.toFixed(1) + ' & ' +
-        f.dam.toFixed(1) + ' (avg ' + f.parentAvg.toFixed(1) + ')</span>';
+      tip.innerHTML = html(f);
       tip.hidden = false;
       const wb = wrap.getBoundingClientRect();
-      const left = px(f.parentAvg) / W * box.width + (box.left - wb.left);
-      const top2 = py(f.lamb) / H * box.height + (box.top - wb.top);
+      const left = x / W * box.width + (box.left - wb.left);
+      const top2 = y / H * box.height + (box.top - wb.top);
       tip.style.left = Math.min(left + 12, wb.width - tip.offsetWidth - 4) + 'px';
       tip.style.top = Math.max(0, top2 - tip.offsetHeight - 10) + 'px';
     };
     svgEl.onpointerleave = () => { tip.hidden = true; if (active) active.classList.remove('on'); active = null; };
   }
 
+  // ------------------------------------------------------ gilded chart
+
+  function gildChartHTML() {
+    return '<div class="chart-card">' +
+      '<div class="chart-title"><b>Gilded</b> · 200 made-up families · heritability ' + E.LIABILITIES[0].h2 + '</div>' +
+      '<div class="chart-legend"><span><i class="lg-gold"></i>Gilded lamb</span><span><i class="lg-plain"></i>Not gilded</span></div>' +
+      '<div class="chart-wrap" id="gild-wrap"><svg class="chart-svg" id="gild-svg" viewBox="0 0 600 360" role="img"></svg>' +
+      '<div class="chart-tip" id="gild-tip" hidden></div></div>' +
+      '<p class="chart-note" id="gild-note"></p>' +
+      '<details class="chart-table"><summary>Show the numbers</summary><div id="gild-table"></div></details>' +
+      '</div>';
+  }
+
+  function drawGildChart(root) {
+    const { liability: l, families } = E.simulateGildFamilies(200, 9);
+    const W = 600, H = 360;
+    const m = { l: 52, r: 150, t: 14, b: 44 };
+    const all = families.map(f => f.parentAvg).concat(families.map(f => f.lamb));
+    const lo = Math.floor(Math.min(...all));
+    const hi = Math.ceil(Math.max(...all));
+    const px = v => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r);
+    const py = v => H - m.b - (v - lo) / (hi - lo) * (H - m.t - m.b);
+    const xs = families.map(f => f.parentAvg);
+    const ys = families.map(f => f.lamb);
+    const mx = xs.reduce((a, b) => a + b) / xs.length;
+    const my = ys.reduce((a, b) => a + b) / ys.length;
+    let sxy = 0, sxx = 0;
+    xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; });
+    const slope = sxy / sxx;
+    const fit = x => my + slope * (x - mx);
+
+    let svg = '';
+    for (let v = lo; v <= hi; v++) {
+      svg += '<line class="grid" x1="' + px(lo) + '" x2="' + px(hi) + '" y1="' + py(v) + '" y2="' + py(v) + '"/>' +
+        '<text class="tick" x="' + (m.l - 8) + '" y="' + (py(v) + 4) + '" text-anchor="end">' + v + '</text>' +
+        '<text class="tick" x="' + px(v) + '" y="' + (H - m.b + 18) + '" text-anchor="middle">' + v + '</text>';
+    }
+    svg += '<line class="axis" x1="' + px(lo) + '" x2="' + px(hi) + '" y1="' + py(lo) + '" y2="' + py(lo) + '"/>' +
+      '<text class="axis-label" x="' + ((m.l + W - m.r) / 2) + '" y="' + (H - 6) + '" text-anchor="middle">Parents\' average score</text>' +
+      '<text class="axis-label" transform="translate(14 ' + ((m.t + H - m.b) / 2) + ') rotate(-90)" text-anchor="middle">Lamb\'s score</text>' +
+      '<line class="cut" x1="' + px(lo) + '" x2="' + px(hi) + '" y1="' + py(l.threshold) + '" y2="' + py(l.threshold) + '"/>' +
+      '<text class="line-label halo" x="' + (px(lo) + 8) + '" y="' + (py(l.threshold) - 8) + '">Gilded above this line</text>';
+    families.forEach((f, i) => {
+      svg += '<circle class="dot' + (f.gilded ? ' gold' : '') + '" data-i="' + i + '" cx="' + px(f.parentAvg).toFixed(1) + '" cy="' + py(f.lamb).toFixed(1) + '" r="4"/>';
+    });
+    svg += '<line class="trend" x1="' + px(lo) + '" y1="' + py(fit(lo)) + '" x2="' + px(hi) + '" y2="' + py(fit(hi)) + '"/>' +
+      '<text class="line-label" x="' + (px(hi) + 6) + '" y="' + (py(fit(hi)) + 4) + '">actual trend</text>' +
+      '<text class="line-label muted-label" x="' + (px(hi) + 6) + '" y="' + (py(fit(hi)) + 18) + '">slope ≈ ' + slope.toFixed(2) + '</text>';
+
+    const svgEl = root.querySelector('#gild-svg');
+    svgEl.innerHTML = svg;
+    const gilded = families.filter(f => f.gilded).length;
+    svgEl.setAttribute('aria-label', 'Scatter of ' + families.length + ' made-up lambs: each lamb\'s hidden score against its parents\' average. ' +
+      gilded + ' lambs score above the cutoff of ' + l.threshold + ' and are gilded.');
+
+    const sorted = families.slice().sort((a, b) => b.parentAvg - a.parentAvg);
+    const fifth = Math.round(families.length / 5);
+    const rate = list => Math.round(list.filter(f => f.gilded).length / list.length * 100);
+    root.querySelector('#gild-note').textContent =
+      'Lambs of the highest-scoring fifth of pairs were ' + rate(sorted.slice(0, fifth)) + '% gilded; lambs of the lowest fifth, ' +
+      rate(sorted.slice(-fifth)) + '%. In your flock the scores are hidden: you only see who\'s gilded.';
+    root.querySelector('#gild-table').innerHTML =
+      '<table class="data"><thead><tr><th>Ram</th><th>Ewe</th><th>Parents\' average</th><th>Lamb</th><th>Gilded?</th></tr></thead><tbody>' +
+      families.map(f => '<tr><td>' + f.sire.toFixed(2) + '</td><td>' + f.dam.toFixed(2) + '</td><td>' + f.parentAvg.toFixed(2) +
+        '</td><td>' + f.lamb.toFixed(2) + '</td><td>' + (f.gilded ? 'Yes' : 'No') + '</td></tr>').join('') + '</tbody></table>';
+    nearestTip(root, 'gild', families, f => [px(f.parentAvg), py(f.lamb)], W, H, f =>
+      '<b>Score ' + f.lamb.toFixed(2) + '</b> ' + (f.gilded ? 'gilded lamb' : 'lamb, not gilded') + '<br><span>parents ' +
+      f.sire.toFixed(2) + ' & ' + f.dam.toFixed(2) + ' (avg ' + f.parentAvg.toFixed(2) + ')</span>');
+  }
+
+  // ------------------------------------------------------ fantasy section
+
+  function fantasyTable() {
+    const white = { agouti: ['white', 'solid'] };
+    const rows = [
+      ['g-dilution', 'Dilution', 'Incomplete dominance', fchip({ dilution: ['full', 'dilute'] }, 'Dusk') + fchip({ dilution: ['dilute', 'dilute'] }, 'Frost')],
+      ['g-hue', 'Hue', 'Codominance', fchip({ hue: ['rose', 'rose'] }, 'Rose') + fchip({ hue: ['rose', 'blue'] }, 'Violet') + fchip({ hue: ['blue', 'blue'] }, 'Blue')],
+      withOpal && ['g-opal', 'Opal', 'Sex linkage', fchip(Object.assign({ opal: ['opal', 'plain'] }, white), 'Patchy') + fchip(Object.assign({ opal: ['opal', 'opal'] }, white), 'Opal')],
+      ['g-speckle', 'Speckle', 'Mutation', fchip({ speckle: ['speckled', 'speckled'] }, 'Speckled')],
+      ['g-lantern', 'Lantern', 'Lethal allele', fchip({ lantern: ['glow', 'plain'] }, 'Glowing')],
+      ['g-gilded', 'Gilded', 'Threshold trait', fchip(white, 'Gilded', { look: { gilded: true } })],
+    ].filter(Boolean);
+    return '<div class="pt-scroll"><table class="data fantasy-table"><thead><tr><th>Gene</th><th>How it works</th><th>Looks</th></tr></thead><tbody>' +
+      rows.map(([id, name, how, looks]) => '<tr><th scope="row"><a href="#' + id + '">' + name + '</a></th><td>' + how + '</td><td><span class="finish-ex">' +
+        looks + '</span></td></tr>').join('') + '</tbody></table></div>';
+  }
+
+  // One worked example per gene: swatch, title and that gene's alleles.
+  function fex(over, genes, extra) {
+    const g = fgeno(over);
+    const look = Object.assign(E.phenotypeOf(g, (extra && extra.sex) || 'ewe'), extra && extra.look);
+    return '<figure class="ex">' + D.swatch(look, 'lg') + '<figcaption><b>' + esc(D.title(look)) + '</b>' +
+      (genes.length ? '<span class="gt-line">' + genes.map(k => '<span class="gt-gene">' + pairSym(k, g[k]) + '</span>').join('') + '</span>' : '') +
+      (extra && extra.note ? '<span class="ex-note">' + esc(extra.note) + '</span>' : '') + '</figcaption></figure>';
+  }
+
+  // Dev only: shown when the flock has Opal.
+  function opalHTML(white) {
+    return '<h3 id="g-opal">Opal: sex linkage</h3>' +
+      '<p>Opal sits on the X chromosome. A ewe has two X chromosomes; a ram has one X and one Y, and the Y has no Opal gene at all. ' +
+      'So a ram shows whatever his one X carries, while a ewe with one ' + F.XO + ' is <b>patchy</b> and a ewe with two is fully opal.</p>' +
+      '<div class="ex-row">' + fex(Object.assign({ opal: [null, 'opal'] }, white), ['opal'], { sex: 'ram', note: 'ram: one X' }) +
+      fex(Object.assign({ opal: ['opal', 'plain'] }, white), ['opal']) + fex(Object.assign({ opal: ['opal', 'opal'] }, white), ['opal']) + '</div>' +
+      '<p>A ram passes his X to every daughter and his Y to every son. So <b>sons get their opal only from their dam</b>, ' +
+      'and a ram\'s opal skips a generation through his daughters. In your notes, a ram has one Opal slot; the other shows Y.</p>' +
+      punnett('opal', 'A plain ram and a patchy ewe: half their sons are opal, from her. Try making the ram opal: his daughters change, his sons don\'t.');
+  }
+
+  function fantasyHTML() {
+    const l = E.LIABILITIES[0];
+    const odds = Math.round(1 / E.SPECKLE_MUTATION_RATE);
+    const white = { agouti: ['white', 'white'] };
+    const pair = (a, b) => a + '/' + b;
+    return '<p>None of these genes exist in real sheep. Each one is a small, made-up example of a real way genes can behave. ' +
+      'They only appear in flocks started with <b>Include fantasy genes</b>, and they work on top of the real color genes without changing them.</p>' +
+      fantasyTable() +
+
+      '<h3 id="g-dilution">Dilution: incomplete dominance</h3>' +
+      '<p>Neither allele fully wins. One ' + F.d + ' lightens the dark color to <b>dusk</b>, and two make it <b>frost</b>. ' +
+      'So a sheep\'s shade gives away both its alleles. Only the dark color changes: the light parts of badgerface and mouflon stay the same, ' +
+      'and a white sheep hides dilution completely.</p>' +
+      '<div class="ex-row">' + fex({ agouti: ['badgerface', 'solid'] }, ['dilution']) +
+      fex({ agouti: ['badgerface', 'solid'], dilution: ['full', 'dilute'] }, ['dilution']) +
+      fex({ agouti: ['badgerface', 'solid'], dilution: ['dilute', 'dilute'] }, ['dilution']) + '</div>' +
+      punnett('dilution', 'Two dusk parents: 1 full : 2 dusk : 1 frost. Every lamb\'s shade shows its genotype.') +
+
+      '<h3 id="g-hue">Hue: codominance, and hiding Brown</h3>' +
+      '<p>Rose (' + F.Hr + ') and blue (' + F.Hb + ') are recessive to normal (' + F.Hp + '), so a sheep needs two of them to show any hue. ' +
+      'With one of each, neither hides the other and it shows both at once: <b>violet</b>.</p>' +
+      '<p>A hue replaces the dark color completely, so it hides Brown: a rose sheep could be ' + pair(S.B, S.B) + ' or ' + pair(S.b, S.b) + '. ' +
+      'Both parents below are moorit underneath (' + pair(S.b, S.b) + '), yet no lamb is moorit. Switch a parent to ' + pair(F.Hp, F.Hp) +
+      ' and the moorit comes back.</p>' +
+      punnett('hue', 'Two violet parents: 1 rose : 2 violet : 1 blue.') +
+
+      (withOpal ? opalHTML(white) : '') +
+
+      '<h3 id="g-speckle">Speckle: mutation</h3>' +
+      '<p>' + F.st + ' is recessive, like spotting: ' + pair(F.st, F.st) + ' sheep have tiny gold speckles. What\'s new is that a normal ' + F.St +
+      ' sometimes changes into ' + F.st + ' as it\'s passed on, about 1 time in ' + odds + '.</p>' +
+      '<p>So now and then a speckled lamb turns up from parents that can\'t give it two ' + F.st + ' alleles, and that isn\'t always a mistake in your notes. ' +
+      'Predictions leave mutations out. If one new mutation would explain a lamb, the surprise check marks it <b>rare</b> instead of impossible.</p>' +
+      punnett('speckle', 'Two carriers: one lamb in four is speckled, not counting new mutations.') +
+
+      '<h3 id="g-lantern">Lantern: a lethal allele</h3>' +
+      '<p>One ' + F.L + ' makes a sheep glow. Two are lethal: an ' + pair(F.L, F.L) + ' lamb doesn\'t develop and is never born. ' +
+      'So every glowing sheep is ' + pair(F.L, F.Lp) + ', and every plain one is ' + pair(F.Lp, F.Lp) + '.</p>' +
+      '<p>Two glowing parents lose about a quarter of their lambs. Of the lambs that are born, about 2 glow for every 1 that doesn\'t, ' +
+      'instead of the 3 : 1 you\'d expect from a dominant allele, and litters are smaller. A sheep\'s litter history shows lambs that didn\'t develop.</p>' +
+      punnett('lantern', 'Two glowing parents: of every four lambs conceived, two glow, one is plain and one doesn\'t develop.') +
+
+      '<h3 id="g-gilded">Gilded: a threshold trait</h3>' +
+      '<p>Gilded isn\'t one gene. Like fleece, it comes from a hidden score built from many genes plus luck, with a heritability of ' + l.h2 + '. ' +
+      'The difference is that you never see the score, only whether it passed a cutoff: a sheep is gilded if its score is above ' + l.threshold +
+      ', which about 1 sheep in 6 manage. It shows as a gold ring around the swatch.</p>' +
+      '<p>Gilded parents tend to have high scores, so their lambs are gilded more often, but most of their lambs still aren\'t. ' +
+      'Each dot is one made-up lamb, placed by its parents\' average score and its own.</p>' +
+      gildChartHTML() +
+      '<p>There\'s no notes row for gilded and it never raises a surprise flag: with many genes and some luck, any lamb can go either way. ' +
+      'The breeding pen shows each pairing\'s chance, worked out from which parents and ancestors are gilded.</p>';
+  }
+
   // ------------------------------------------------------------- page
 
+  const FANTASY_SECTION = ['g-fantasy', 'Fantasy genes (made up)'];
   const SECTIONS = [
     ['g-basics', 'The basics'],
     ['g-color', 'How coat color works'],
@@ -553,12 +837,13 @@
     ['g-detective', 'Detective work'],
   ];
 
-  function section(i, body) {
-    const [id, title] = SECTIONS[i];
+  function section(i, body, list) {
+    const [id, title] = (list || SECTIONS)[i];
     return '<section id="' + id + '"><h2><span class="num-badge">' + (i + 1) + '</span>' + title + '</h2>' + body + '</section>';
   }
 
-  function pageHTML() {
+  function pageHTML(fantasy) {
+    const sections = fantasy ? SECTIONS.concat([FANTASY_SECTION]) : SECTIONS;
     const pen10 = E.INBREEDING_FLEECE_PENALTY * 0.1;
     const diam = E.TRAIT.diameter;
 
@@ -586,7 +871,7 @@
       '</div>' +
       '<p>Your sheep show you their looks, not their genes. To read a sheep, ask these questions in order. ' +
       'Each answer tells you something certain about its genes, and what\'s still hidden.</p>' +
-      flowHTML() +
+      flowHTML(fantasy) +
       '<div class="key"><b>Hiding, part 2: one gene covering another.</b> White covers every other color gene, and dominant black covers the agouti pattern. ' +
       'A covered-up gene is still there and still gets passed on. A solid black sheep may carry badgerface; a white sheep may carry anything. ' +
       'In this guide, <span class="gt-gene hid">greyed genotypes</span> are genes a sheep has but doesn\'t show.</div>' +
@@ -748,13 +1033,14 @@
 
     return '<div class="guide">' +
       '<nav class="guide-toc" aria-label="Guide sections"><div class="toc-title">Genetics guide</div><ol>' +
-      SECTIONS.map(([id, t]) => '<li><a href="#' + id + '">' + t + '</a></li>').join('') + '</ol></nav>' +
+      sections.map(([id, t]) => '<li><a href="#' + id + '">' + t + '</a></li>').join('') + '</ol></nav>' +
       '<article class="guide-body">' +
       '<header class="guide-head"><h1>How sheep genetics works</h1>' +
       '<p class="lede">Everything you need to work out what your sheep are hiding. The sheep on this page are made-up examples; ' +
-      'it never looks at your flock.</p></header>' +
+      'it never looks at your flock.' + (fantasy ? ' Your flock has fantasy genes, so the last section covers those.' : '') + '</p></header>' +
       section(0, basics) + section(1, color) + section(2, genes) + section(3, horns) +
       section(4, booroola) + section(5, fleece) + section(6, inbreeding) + section(7, detective) +
+      (fantasy ? section(8, fantasyHTML(), sections) : '') +
       '</article></div>';
   }
 
@@ -774,12 +1060,19 @@
     }
   }
 
-  function render(container) {
-    if (mounted) return;
-    mounted = true;
-    container.innerHTML = pageHTML();
+  // Builds the page, and rebuilds it when the flock's genes change.
+  function render(container, opts) {
+    const fantasy = !!(opts && opts.fantasy);
+    const kind = fantasy ? ((opts && opts.genes) || []).join() : 'base';
+    if (mounted === kind) return;
+    const first = mounted === null;
+    mounted = kind;
+    withOpal = fantasy && !!(opts && opts.genes && opts.genes.includes('opal'));
+    container.innerHTML = pageHTML(fantasy);
     container.querySelectorAll('[data-punnett]').forEach(mountPunnett);
-    drawChart(container, 'diameter');
+    drawChart(container, chartTrait);
+    if (fantasy) drawGildChart(container);
+    if (!first) return;
 
     container.addEventListener('change', e => {
       const t = e.target;
@@ -796,7 +1089,8 @@
       const trait = e.target.closest('[data-trait]');
       if (trait) {
         container.querySelectorAll('[data-trait]').forEach(x => x.setAttribute('aria-pressed', String(x === trait)));
-        drawChart(container, trait.dataset.trait);
+        chartTrait = trait.dataset.trait;
+        drawChart(container, chartTrait);
         return;
       }
       const pt = e.target.closest('[data-ptable]');

@@ -2,46 +2,97 @@
  *
  * Phenotype in, swatch and labels out. This is the only code that draws a
  * sheep, and it never sees a genotype. A phenotype ("look") is
- *   { sex, color: white|black|brown, pattern: none|solid|badgerface|mouflon|mixed,
- *     spotted, horned }
+ *   { sex, color: white|black|brown|rose|blue|violet,
+ *     pattern: none|solid|badgerface|mouflon|mixed, spotted, horned }
+ * plus, in flocks with fantasy genes,
+ *   { shade: full|dusk|frost, opal: none|patchy|full, speckled, gilded, glow }
+ * Missing fantasy fields mean the plain version.
  */
 (function (root) {
   'use strict';
 
   const WHITE = '#f4f0e6';
+  // Each dark color at full, dusk and frost shade, plus the light part of
+  // badgerface and mouflon patterns, which dilution leaves alone.
   const PIGMENT = {
-    black: { dark: '#2a2522', light: '#d3bf9c' },
-    brown: { dark: '#6c4128', light: '#e3cdb0' },
+    black: { full: '#2a2522', dusk: '#5c544e', frost: '#968e88', light: '#d3bf9c' },
+    brown: { full: '#6c4128', dusk: '#956a4d', frost: '#c09d81', light: '#e3cdb0' },
+    rose: { full: '#8a3353', dusk: '#b46483', frost: '#d99ab2', light: '#f1dae0' },
+    blue: { full: '#2b4677', dusk: '#5a78a9', frost: '#95aed4', light: '#dbe3ef' },
+    violet: { full: '#55337a', dusk: '#8163a8', frost: '#b49dd1', light: '#e5dcef' },
   };
+  // Opal: a faint pastel sheen over the whole coat, or in soft blobs over
+  // about half of it when patchy.
+  const OPAL = ['rgba(255, 168, 214, A)', 'rgba(160, 212, 255, A)', 'rgba(176, 255, 214, A)', 'rgba(255, 234, 150, A)'];
+  const opalTint = (i, a) => OPAL[i].replace('A', a);
+  const blob = (x, y, r, i) => 'radial-gradient(' + r + '% ' + r + '% at ' + x + '% ' + y + '%, ' +
+    opalTint(i, 0.55) + ' 55%, ' + opalTint(i, 0) + ' 100%)';
+  const OPAL_LAYER = {
+    full: 'conic-gradient(from 200deg, ' + [0, 1, 2, 3, 0].map(i => opalTint(i, 0.36)).join(', ') + ')',
+    patchy: [blob(30, 34, 34, 0), blob(70, 64, 32, 1), blob(30, 78, 22, 2)].join(', '),
+  };
+  // Speckles: tiny gold dots in fixed places, clear of the spotting patch.
+  const SPECKS = [[28, 30], [19, 55], [38, 77], [61, 79], [79, 63], [43, 50]];
+  const SPECK_LAYERS = SPECKS.map(([x, y]) =>
+    'radial-gradient(6% 6% at ' + x + '% ' + y + '%, #f1c232 50%, #8f6508 68%, transparent 76%)').join(', ');
 
-  const COLOR_NAME = { white: 'White', black: 'Black', brown: 'Moorit' };
+  const COLOR_NAME = { white: 'White', black: 'Black', brown: 'Moorit', rose: 'Rose', blue: 'Blue', violet: 'Violet' };
+  const SHADE_NAME = { full: 'Full', dusk: 'Dusk', frost: 'Frost' };
   const PATTERN_NAME = {
     none: '', solid: 'solid', badgerface: 'badgerface', mouflon: 'mouflon', mixed: 'badgerface/mouflon',
   };
+  const OPAL_NAME = { none: 'None', patchy: 'Patchy opal', full: 'Opal' };
   const TEXT = '︎'; // keep ♂ ♀ as text glyphs, not emoji
   const SEX_ICON = { ram: '♂' + TEXT, ewe: '♀' + TEXT };
+  const cap = s => s[0].toUpperCase() + s.slice(1);
 
   function halves(top, bottom) {
     return 'linear-gradient(to bottom, ' + top + ' 0 50%, ' + bottom + ' 50% 100%)';
   }
 
-  /** CSS background for a look. */
-  function background(look) {
+  function coat(look) {
     if (look.color === 'white') return WHITE;
     const p = PIGMENT[look.color];
+    const dark = p[look.shade || 'full'];
     switch (look.pattern) {
-      case 'badgerface': return halves(p.light, p.dark);
-      case 'mouflon': return halves(p.dark, p.light);
+      case 'badgerface': return halves(p.light, dark);
+      case 'mouflon': return halves(dark, p.light);
       case 'mixed':
-        return halves(p.light, p.dark) + ' left / 50% 100% no-repeat, ' +
-               halves(p.dark, p.light) + ' right / 50% 100% no-repeat';
-      default: return p.dark;
+        return halves(p.light, dark) + ' left / 50% 100% no-repeat, ' +
+               halves(dark, p.light) + ' right / 50% 100% no-repeat';
+      default: return dark;
     }
   }
 
+  /** CSS background for a look: surface effects layered over the coat. */
+  function background(look) {
+    const layers = [];
+    if (look.speckled) layers.push(SPECK_LAYERS);
+    if (OPAL_LAYER[look.opal]) layers.push(OPAL_LAYER[look.opal]);
+    layers.push(coat(look));
+    return layers.join(', ');
+  }
+
+  // The words after the main color, in reading order.
+  function extras(look) {
+    const out = [];
+    if (look.spotted && look.color !== 'white') out.push('spotted');
+    if (look.opal === 'full') out.push('opal');
+    else if (look.opal === 'patchy') out.push('patchy opal');
+    if (look.speckled) out.push('speckled');
+    if (look.gilded) out.push('gilded');
+    if (look.glow) out.push('glowing');
+    return out;
+  }
+
+  /** e.g. "Moorit solid, spotted" or "Frost violet badgerface, opal, glowing". */
   function title(look) {
-    if (look.color === 'white') return 'White';
-    return COLOR_NAME[look.color] + ' ' + PATTERN_NAME[look.pattern] + (look.spotted ? ', spotted' : '');
+    let head = 'White';
+    if (look.color !== 'white') {
+      const shade = look.shade && look.shade !== 'full' ? SHADE_NAME[look.shade] + ' ' : '';
+      head = (shade ? shade + COLOR_NAME[look.color].toLowerCase() : COLOR_NAME[look.color]) + ' ' + PATTERN_NAME[look.pattern];
+    }
+    return [head].concat(extras(look)).join(', ');
   }
 
   /** Text labels for a look. */
@@ -50,8 +101,13 @@
     return {
       title: title(look),
       color: COLOR_NAME[look.color],
-      pattern: white ? 'Hidden by white' : PATTERN_NAME[look.pattern][0].toUpperCase() + PATTERN_NAME[look.pattern].slice(1),
+      shade: white ? 'Hidden by white' : SHADE_NAME[look.shade || 'full'],
+      pattern: white ? 'Hidden by white' : cap(PATTERN_NAME[look.pattern]),
       spotting: white ? 'Hidden by white' : look.spotted ? 'White patches' : 'None',
+      sheen: OPAL_NAME[look.opal || 'none'],
+      speckles: look.speckled ? 'Gold speckles' : 'None',
+      tips: look.gilded ? 'Gilded' : 'Plain',
+      glow: look.glow ? 'Glowing' : 'None',
       horns: look.horned ? 'Horned' : 'Polled',
       sex: look.sex === 'ram' ? 'Ram' : 'Ewe',
       sexIcon: SEX_ICON[look.sex] || '',
@@ -59,15 +115,43 @@
     };
   }
 
+  /**
+   * One part of a look in a few words, for messages about that part:
+   * pattern, dark color, shade, spots, horns, opal, speckle or glow.
+   */
+  function part(look, which) {
+    switch (which) {
+      case 'pattern': return look.color === 'white' ? 'white' : PATTERN_NAME[look.pattern];
+      case 'dark color': return COLOR_NAME[look.color].toLowerCase();
+      case 'shade': return SHADE_NAME[look.shade || 'full'].toLowerCase();
+      case 'spots': return look.spotted ? 'white patches' : 'no patches';
+      case 'horns': return describe(look).hornTag;
+      case 'opal': return look.opal === 'full' ? 'opal' : look.opal === 'patchy' ? 'patchy opal' : 'no opal';
+      case 'speckle': return look.speckled ? 'speckled' : 'no speckles';
+      case 'glow': return look.glow ? 'glowing' : 'no glow';
+      default: return title(look);
+    }
+  }
+
   /** Round swatch as an HTML string. size: xs | sm | md | lg | xl */
   function swatch(look, size) {
     const cls = ['swatch', 'swatch-' + (size || 'md')];
     if (look.color === 'white') cls.push('is-white');
     if (look.spotted && look.color !== 'white') cls.push('is-spotted');
+    if (look.gilded) cls.push('is-gilded');
+    if (look.glow) cls.push('is-glowing');
     const label = title(look);
     return '<span class="' + cls.join(' ') + '" style="background:' + background(look) +
       '" role="img" aria-label="' + label + '" title="' + label + '"></span>';
   }
 
-  root.SheepDisplay = { swatch, describe, background, title, sexIcon: sex => SEX_ICON[sex] || '' };
+  /** An empty dashed circle, for a lamb that doesn't develop. */
+  function emptySwatch(size, label) {
+    return '<span class="swatch swatch-' + (size || 'md') + ' is-empty" role="img" aria-label="' + (label || 'No lamb') + '"></span>';
+  }
+
+  root.SheepDisplay = {
+    swatch, emptySwatch, describe, part, background, title, sexIcon: sex => SEX_ICON[sex] || '',
+    COLOR_NAME, SHADE_NAME,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
