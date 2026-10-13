@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine Tests</title>
+<style>
+  body { margin: 0; padding: 24px; background: #f6f6f4; color: #1f1f1d; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre { margin: 0; white-space: pre-wrap; }
+  .fail { color: #a11; font-weight: 700; }
+</style>
+</head>
+<body>
+<pre id="out"></pre>
+<script src="js/engine.js"></script>
+<script src="js/engine.test.js"></script>
+<script>
+  const out = document.getElementById('out');
+  const lines = [];
+  runEngineTests(SheepEngine, s => lines.push(s));
+  out.innerHTML = lines
+    .map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;'))
+    .map(l => /FAIL/.test(l) ? '<span class="fail">' + l + '</span>' : l)
+    .join('\n');
+</script>
+</body>
+</html>
