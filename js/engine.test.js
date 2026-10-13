@@ -297,6 +297,11 @@
       for (const r of f.list()) if (r.id !== ram.id && r.id !== ewe.id) f.remove(r.id);
       check('removed sheep don\'t count', f.room() === 2);
       check('after removing some, breeding works again', f.breed(ram.id, ewe.id).event !== undefined);
+      const g = E.createFlock({ rng: E.mulberry32(7), maxSize: 100 });
+      const r2 = g.addSheep({ sex: 'ram' });
+      const e2 = g.addSheep({ sex: 'ewe' });
+      for (let i = 0; i < E.BREEDING_LIMIT.ewe; i++) g.breed(r2.id, e2.id);
+      check('retired sheep take no space', g.room() === 100 - (g.list().length - 1), 'room ' + g.room() + ' with ' + g.list().length + ' sheep');
     }
 
     // ------------------------------------------------------------------

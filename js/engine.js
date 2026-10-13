@@ -159,9 +159,10 @@
   // Most times a sheep can be bred: one litter per breeding.
   const BREEDING_LIMIT = { ram: 10, ewe: 5 };
 
-  // Most sheep the game's flock holds, retired ones included (removed ones
-  // don't count). At the limit, breeding and "+ Random sheep" stop until some
-  // are removed. A litter born just under it can take the flock up to 2 over.
+  // Most sheep the game's flock holds. Only sheep that can still breed count:
+  // retired and removed ones don't. At the limit, breeding and "+ Random sheep"
+  // stop until some are removed or retire. A litter born just under it can take
+  // the flock up to 2 over.
   const MAX_FLOCK_SIZE = 60;
 
   // Chance of a litter of 1, 2 or 3 by the ewe's number of Booroola copies.
@@ -859,10 +860,10 @@
 
     function rec(id) { return sheep.get(id) || null; }
 
-    // How many more sheep fit before the flock is full.
+    // How many more sheep fit before the flock is full. Retired sheep take no space.
     function room() {
       let n = 0;
-      for (const r of sheep.values()) if (!r.removed) n++;
+      for (const r of sheep.values()) if (!r.removed && r.litters.length < BREEDING_LIMIT[r.sex]) n++;
       return maxSize - n;
     }
 

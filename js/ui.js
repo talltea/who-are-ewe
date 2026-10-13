@@ -119,12 +119,11 @@
     return r.name + ' has been bred ' + plural(r.litters.length, 'time') + ', the most a ' + r.sex + ' can be.';
   }
 
-  // When the flock reaches E.MAX_FLOCK_SIZE, nothing new can join until some sheep are removed.
+  // When the flock reaches E.MAX_FLOCK_SIZE sheep that can still breed, nothing new can join until some are removed or retire.
   function fullText() {
-    const n = flock.list().length;
-    const old = flock.list().filter(retired).length;
-    return 'The flock is full: ' + n + ' sheep, the most it can hold. Remove some to make room' +
-      (old ? '. Retired sheep are a good place to start: tick Show retired to find them.' : '.');
+    const n = flock.list().filter(r => !retired(r)).length;
+    return 'The flock is full: ' + n + ' sheep that can still breed, the most it can hold. Retired sheep don\'t count. ' +
+      'Remove some to make room.';
   }
 
   // ---------------------------------------------------- picking a pair
@@ -708,7 +707,7 @@
     const hidden = all.filter(hiddenRetired).length;
     const room = flock.room();
     return all.length + ' sheep · ' + plural(rams, 'ram') + ', ' + plural(all.length - rams, 'ewe') +
-      (room <= 0 ? ' · flock full' : room <= 10 ? ' · room for ' + room + ' more' : '') +
+      (room <= 0 ? ' · flock full (' + all.filter(r => !retired(r)).length + ' can breed)' : room <= 10 ? ' · room for ' + room + ' more' : '') +
       (hidden ? ' · ' + hidden + ' retired hidden' : '') +
       (list.length !== all.length - hidden || ui.showRemoved ? ' · showing ' + list.length : '');
   }
