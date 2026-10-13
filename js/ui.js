@@ -60,6 +60,7 @@
     removeArmed: false,
     lastLitter: null,
     fantasyNotes: true,
+    hideInvite: false,
   };
   const fresh = new Map(); // id -> time it arrived, for the highlight
   const FRESH_MS = 2400;
@@ -114,6 +115,46 @@
 
   function retiredText(r) {
     return r.name + ' has been bred ' + plural(r.litters.length, 'time') + ', the most a ' + r.sex + ' can be.';
+  }
+
+  // ---------------------------------------------------- picking a pair
+  //
+  // Click Breed on a sheep and it goes in the pen. Until it has a mate, only
+  // sheep of the other sex can be picked.
+
+  const otherSex = sex => (sex === 'ram' ? 'ewe' : 'ram');
+
+  // The sheep waiting for a mate, when exactly one is in the pen.
+  function waiting() {
+    const ram = ui.pen.ram && flock.get(ui.pen.ram);
+    const ewe = ui.pen.ewe && flock.get(ui.pen.ewe);
+    return ram && !ewe ? ram : ewe && !ram ? ewe : null;
+  }
+
+  // What a card's breed button does right now, or null if there's no button.
+  function penAction(r) {
+    if (r.removed) return null;
+    if (ui.pen[r.sex] === r.id) return { act: 'out', label: 'In pen', title: 'In the breeding pen. Click to take ' + r.name + ' out.' };
+    if (retired(r)) return null;
+    const w = waiting();
+    if (w) return w.sex === r.sex ? null : { act: 'pick', label: 'Pick', title: 'Breed ' + r.name + ' with ' + w.name };
+    const current = ui.pen[r.sex] && flock.get(ui.pen[r.sex]);
+    if (current) return { act: 'swap', label: 'Swap in', title: 'Put ' + r.name + ' in the pen instead of ' + current.name };
+    return { act: 'start', label: 'Breed', title: 'Put ' + r.name + ' in the breeding pen, then pick a mate' };
+  }
+
+  function penButton(r, act, cls, label) {
+    return '<button class="' + cls + '" data-pen="' + r.id + '" data-pen-act="' + act.act + '" title="' + esc(act.title) + '"' +
+      (act.act === 'out' ? ' aria-pressed="true"' : '') + '>' + esc(label || act.label) + '</button>';
+  }
+
+  function pickBanner() {
+    const w = waiting();
+    const el = $('pick-banner');
+    el.hidden = !w;
+    if (!w) return;
+    el.innerHTML = D.swatch(w.phenotype, 'sm') + '<span>Pick a <b>' + otherSex(w.sex) + '</b> to breed with ' + esc(w.name) + '.</span>' +
+      '<button class="btn btn-small" data-act="cancel-pick">Cancel</button>';
   }
 
   // ------------------------------------------------------------- notes
@@ -374,7 +415,7 @@
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
       sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir, showRemoved: ui.showRemoved,
-      fantasyNotes: ui.fantasyNotes,
+      fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite,
     };
   }
 
@@ -422,6 +463,7 @@
     ui.dir = u.dir === -1 ? -1 : 1;
     ui.showRemoved = !!u.showRemoved;
     ui.fantasyNotes = u.fantasyNotes !== false;
+    ui.hideInvite = !!u.hideInvite;
     ui.lastLitter = null;
     ui.suggest = false;
     ui.renaming = false;
@@ -551,8 +593,14 @@
     if (r.removed) cls.push('is-removed');
     const age = fresh.has(r.id) ? Date.now() - fresh.get(r.id) : Infinity;
     if (age < FRESH_MS) cls.push('is-fresh');
-    const inPen = ui.pen.ram === r.id || ui.pen.ewe === r.id;
-    if (inPen) cls.push('in-pen');
+    const act = penAction(r);
+    const w = waiting();
+    // While a sheep waits for a mate, everything it can't be paired with fades back.
+    if (w && r.id !== w.id && (!act || act.act !== 'pick')) cls.push('is-unavailable');
+    // Gently mark the selected sheep's parents.
+    const sel = ui.selected && flock.get(ui.selected);
+    const kin = sel && (sel.sire === r.id ? 'Sire' : sel.dam === r.id ? 'Dam' : '');
+    if (kin) cls.push('is-parent');
     const trait = E.TRAIT[ui.sort];
     const stat = trait
       ? '<div class="card-stat">' + r.phenotype.fleece[trait.key].toFixed(1) + ' <small>' + trait.unit + '</small></div>'
@@ -569,12 +617,11 @@
     const mistake = wrong.length
       ? '<div class="card-flag"><span class="flag-dot">✗</span><span>Wrong sure guess: ' + wrong.join(', ') + '</span></div>'
       : '';
-    const pen = r.removed || (retired(r) && !inPen) ? '' :
-      '<button class="pen-btn" data-pen="' + r.id + '" title="' + (inPen ? 'In the breeding pen' : 'Put in the breeding pen') +
-      '" aria-label="Put ' + esc(r.name) + ' in the breeding pen" aria-pressed="' + inPen + '">♥︎</button>';
+    const pen = act ? penButton(r, act, 'pen-btn ' + act.act) : '';
     return '<div class="' + cls.join(' ') + '"' + (age < FRESH_MS ? ' style="animation-delay:-' + age + 'ms"' : '') +
       ' data-id="' + r.id + '" data-fk="card-' + r.id + '" tabindex="0" role="button" aria-label="' +
-      esc(r.name + ', ' + d.sex + ', ' + d.title) + '">' +
+      esc(r.name + ', ' + d.sex + ', ' + d.title + (kin ? ', ' + kin.toLowerCase() + ' of ' + sel.name : '')) + '">' +
+      (kin ? '<span class="kin-tag" title="' + esc(sel.name) + '\'s ' + kin.toLowerCase() + '">' + kin + '</span>' : '') +
       '<div class="card-top">' + D.swatch(r.phenotype, 'md') + pen + '</div>' +
       '<div class="card-name"><span class="nm">' + esc(r.name) + '</span><span class="sex" title="' + d.sex + '">' + d.sexIcon + '</span></div>' +
       '<div class="card-meta">Gen ' + r.gen + (r.removed ? ' · removed' : retired(r) ? ' · retired' : '') + '</div>' +
@@ -591,6 +638,7 @@
       (all.length - rams) + ' ewe' + (all.length - rams === 1 ? '' : 's') +
       (list.length !== all.length || ui.showRemoved ? ' · showing ' + list.length : '');
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
+    pickBanner();
     $('grid').innerHTML = list.length
       ? list.map(cardHTML).join('')
       : '<div class="grid-empty">No sheep match these filters.</div>';
@@ -811,7 +859,7 @@
       '<p>Every sheep carries hidden genes. You only see what they look like.</p>' +
       '<ol>' +
       '<li><b>Click a sheep</b> to see its color, horns and fleece, and to write down your guesses about its genes.</li>' +
-      '<li><b>Click ♥︎</b> on a ram and on a ewe to put them in the breeding pen.</li>' +
+      '<li><b>Click Breed</b> on a sheep, then pick a mate of the other sex.</li>' +
       '<li><b>Breed them</b> and compare the lambs with what your notes predicted. A lamb that doesn\'t fit your guesses gets a surprise flag.</li>' +
       '<li><b>Plan your crosses.</b> A ram can be bred ' + E.BREEDING_LIMIT.ram + ' times and a ewe ' + E.BREEDING_LIMIT.ewe + ', then they retire.</li>' +
       '</ol>' +
@@ -819,8 +867,67 @@
       (flock.fantasy
         ? '<p class="muted">This flock has <b>fantasy genes</b>: ' + fantasyCount() + ' made-up genes, each a small example of a real way genes behave. ' +
           'See <button class="link" data-view="guide" data-anchor="g-fantasy">Fantasy genes</button> in the guide.</p>'
-        : '') +
+        : fantasyInvite('Want more to work out?')) +
       '</div>';
+  }
+
+  // ------------------------------------------------- trying fantasy genes
+
+  // A flock nobody has bred, added to or written notes on yet can be swapped without asking.
+  function untouched() {
+    const all = flock.list({ includeRemoved: true });
+    return !flock.canUndo() && all.length <= 8 && all.every(r => !r.sire && !r.litters.length && !r.removed) &&
+      all.every(r => !notes[r.id] || (!notes[r.id].text && !genesOn().some(g => hasGuesses(r.id, [g.key]))));
+  }
+
+  function fantasyInvite(head, dismissable) {
+    return '<div class="invite">' +
+      (dismissable ? '<button class="invite-x" data-act="hide-invite" aria-label="Not now" title="Not now">×</button>' : '') +
+      '<b>' + head + '</b> <span>Fantasy genes add five made-up genes on top of the real ones: new shades and colors, ' +
+      'gold speckles, a glow and more, each showing a real way genes behave.</span>' +
+      '<button class="btn btn-small" data-act="try-fantasy">Start a fantasy flock</button></div>';
+  }
+
+  // Once a classic flock has had a few litters, the pen suggests fantasy genes until dismissed.
+  const INVITE_AFTER_LITTERS = 6;
+  function penInvite() {
+    if (flock.fantasy || ui.hideInvite) return '';
+    const litters = flock.list({ includeRemoved: true }).filter(r => r.sex === 'ewe').reduce((a, r) => a + r.litters.length, 0);
+    return litters >= INVITE_AFTER_LITTERS ? fantasyInvite('Getting the hang of it?', true) : '';
+  }
+
+  function tryFantasy() {
+    if (!untouched()) {
+      openNewFlock(true);
+      return;
+    }
+    starterFlock(true);
+    saveNow();
+    renderAll();
+    if (ui.view === 'guide') {
+      const sec = document.getElementById('g-fantasy');
+      if (sec) sec.scrollIntoView();
+    }
+    toast('A fantasy flock arrives. Your old flock hadn\'t been used yet, so nothing was lost.');
+  }
+
+  function openNewFlock(fantasy) {
+    $('new-fantasy').checked = fantasy;
+    $('new-dev').hidden = !DEV_GENES.length;
+    $('new-dev').textContent = 'Dev flag on: also ' + DEV_GENES.map(k => E.GENE[k].name).join(', ') + '.';
+    $('new-dialog').returnValue = '';
+    $('new-dialog').showModal();
+  }
+
+  // The side panel's breed button says what it will do with this sheep.
+  function panelPenButton(r) {
+    if (ui.pen[r.sex] === r.id) return penButton(r, { act: 'out', title: 'Take ' + r.name + ' out of the breeding pen' }, 'btn btn-small', 'Take out of pen');
+    if (retired(r)) return '<button class="btn btn-small" disabled title="' + esc(retiredText(r)) + '">Retired from breeding</button>';
+    const w = waiting();
+    if (w && w.sex !== r.sex) return penButton(r, { act: 'pick', title: 'Breed ' + r.name + ' with ' + w.name }, 'btn btn-small btn-primary', 'Breed with ' + w.name);
+    const current = ui.pen[r.sex] && flock.get(ui.pen[r.sex]);
+    if (current) return penButton(r, { act: 'swap', title: 'Put ' + r.name + ' in the pen instead of ' + current.name }, 'btn btn-small', 'Breed instead of ' + current.name);
+    return penButton(r, { act: 'start', title: 'Put ' + r.name + ' in the breeding pen, then pick a mate' }, 'btn btn-small', 'Breed this ' + r.sex);
   }
 
   function sheepPanelHTML(r) {
@@ -834,9 +941,7 @@
     const actions = r.removed
       ? '<button class="btn btn-small" data-act="restore">Return to flock</button>'
       : '<button class="btn btn-small" data-act="rename">Rename</button>' +
-        (retired(r)
-          ? '<button class="btn btn-small" disabled title="' + esc(retiredText(r)) + '">♥︎ Retired</button>'
-          : '<button class="btn btn-small" data-pen="' + r.id + '">♥︎ Put in pen</button>') +
+        panelPenButton(r) +
         '<button class="btn btn-small btn-danger' + (ui.removeArmed ? ' armed' : '') + '" data-act="remove">' + (ui.removeArmed ? 'Click again to remove' : 'Remove from flock') + '</button>';
     return '<div class="sp-head">' + D.swatch(r.phenotype, 'xl') +
       '<div class="sp-title">' + title + '<div class="muted">' + d.sex + ' · Generation ' + r.gen + ' · ' + parents + '</div></div></div>' +
@@ -887,7 +992,10 @@
 
   function penSlot(r, sex) {
     const label = sex === 'ram' ? 'Ram' : 'Ewe';
-    if (!r) return '<div class="pen-slot empty"><span class="pen-role">' + label + '</span><span class="faint">Click ♥︎ on a ' + sex + '</span></div>';
+    if (!r) {
+      return '<div class="pen-slot empty"><span class="pen-role">' + label + '</span><span class="faint">' +
+        (waiting() ? 'Pick a ' + sex + ' in the flock' : 'Click Breed on a ' + sex) + '</span></div>';
+    }
     return '<div class="pen-slot"><span class="pen-role">' + label + '</span>' +
       '<button class="pen-sheep" data-open="' + r.id + '">' + D.swatch(r.phenotype, 'md') + '<span>' + esc(r.name) + '</span></button>' +
       '<span class="pen-left' + (retired(r) ? ' none' : '') + '">' + (retired(r) ? 'Retired' : plural(flock.breedingsLeft(r.id), 'breeding') + ' left') + '</span>' +
@@ -1000,8 +1108,8 @@
     const ewe = ui.pen.ewe && flock.get(ui.pen.ewe);
     let html = '<div class="pen-slots">' + penSlot(ram, 'ram') + '<span class="pen-x">×</span>' + penSlot(ewe, 'ewe') + '</div>';
     if (!ram || !ewe) {
-      return html + lastLitterHTML() + '<p class="hint">Pick a ram and a ewe with the ♥︎ button on their cards. ' +
-        'You\'ll see what their lambs might look like, based on your notes.</p>';
+      return html + lastLitterHTML() + '<p class="hint">Click <b>Breed</b> on a sheep\'s card, then pick its mate. ' +
+        'You\'ll see what their lambs might look like, based on your notes.</p>' + penInvite();
     }
     const F = flock.offspringInbreeding(ram.id, ewe.id);
     const pred = E.predictOffspring(guessOf(ram.id), guessOf(ewe.id));
@@ -1016,7 +1124,7 @@
       html += '<p class="pen-note">' + done.map(r => esc(retiredText(r))).join(' ') + ' Pick another ' +
         (done.length === 2 ? 'pair' : done[0].sex) + ' to keep breeding.</p>';
     }
-    html += lastLitterHTML();
+    html += lastLitterHTML() + penInvite();
     html += '<div class="pen-meta">Lambs\' inbreeding <strong>' + pct(F) + '</strong>' +
       ' <span class="muted">· ' + (F > 0 ? inbreedingNote(F) : 'unrelated') + '</span></div>';
     html += '<section class="sp-sec"><h3>Predicted lambs <small>from your notes</small></h3>' +
@@ -1123,8 +1231,16 @@
     if (retired(r)) { toast(retiredText(r)); return; }
     ui.pen[r.sex] = id;
     ui.side = 'breed';
+    // A Rams or Ewes filter would hide every possible mate.
+    if (waiting() && ui.sex === r.sex) ui.sex = 'all';
     refresh();
     if (ui.pen.ram && ui.pen.ewe) revealSide();
+  }
+
+  function takeOutOfPen(id) {
+    const r = flock.get(id);
+    if (r && ui.pen[r.sex] === id) ui.pen[r.sex] = null;
+    refresh();
   }
 
   function breed() {
@@ -1240,7 +1356,11 @@
     if (side) { ui.side = side.dataset.side; renderSide(); save(); return; }
 
     const pen = t.closest('[data-pen]');
-    if (pen) { putInPen(pen.dataset.pen); return; }
+    if (pen) {
+      if (pen.dataset.penAct === 'out') takeOutOfPen(pen.dataset.pen);
+      else putInPen(pen.dataset.pen);
+      return;
+    }
 
     const open = t.closest('[data-open]');
     if (open) { select(open.dataset.open); return; }
@@ -1297,16 +1417,15 @@
         case 'check-one': if (ui.selected) { runCheck(ui.selected); refresh(); } break;
         case 'check-all': checkAll(); break;
         case 'clear-ram': ui.pen.ram = null; refresh(); break;
+        case 'cancel-pick': ui.pen = { ram: null, ewe: null }; refresh(); break;
+        case 'try-fantasy': tryFantasy(); break;
+        case 'hide-invite': ui.hideInvite = true; refresh(); break;
         case 'clear-ewe': ui.pen.ewe = null; refresh(); break;
         case 'sort-dir': ui.dir = -ui.dir; refresh(); break;
         case 'export': exportFlock(); break;
         case 'import': $('import-file').click(); break;
         case 'new':
-          $('new-fantasy').checked = flock.fantasy;
-          $('new-dev').hidden = !DEV_GENES.length;
-          $('new-dev').textContent = 'Dev flag on: also ' + DEV_GENES.map(k => E.GENE[k].name).join(', ') + '.';
-          $('new-dialog').returnValue = '';
-          $('new-dialog').showModal();
+          openNewFlock(flock.fantasy);
           break;
       }
       return;
@@ -1338,6 +1457,11 @@
     if (e.key === 'Escape' && $('file-actions').classList.contains('open')) {
       setFileMenu(false);
       document.querySelector('[data-act="file-menu"]').focus();
+      return;
+    }
+    if (e.key === 'Escape' && waiting() && !t.closest('input, textarea, select, dialog')) {
+      ui.pen = { ram: null, ewe: null };
+      refresh();
       return;
     }
     if (t.id === 'rename-input') {

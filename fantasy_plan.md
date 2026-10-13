@@ -1,6 +1,8 @@
 # Fantasy Genes: Implementation Plan
 
-Adds six optional fantasy genes to the Sheep Genetics Sandbox: **Dilution, Hue, Opal, Speckle, Lantern and Gilded.** Each one teaches a different real genetic mechanism. They are off by default and switched on per flock with a checkbox.
+Adds optional fantasy genes to the Sheep Genetics Sandbox: **Dilution, Hue, Speckle, Lantern and Gilded**, plus **Opal**, which is built but hidden behind a dev flag. Each one teaches a different real genetic mechanism. They are off by default and switched on per flock with a checkbox.
+
+**Status:** implemented. Opal is dev-only: open the game with `?dev=opal` to include it in new fantasy flocks. See [Implementation notes](#implementation-notes) for where the build differs from this plan.
 
 ## Design rules
 
@@ -14,7 +16,7 @@ Adds six optional fantasy genes to the Sheep Genetics Sandbox: **Dilution, Hue, 
 |---|---|---|---|---|
 | Dilution | Incomplete dominance | D (full), d (dilute) | D/D full shade, D/d **dusk**, d/d **frost**. Lightens the dark color and pattern. | Hidden |
 | Hue | Codominance | Hu⁺ (normal), Huʳ (rose), Huᵇ (blue) | r/r **rose**, b/b **blue**, r/b **violet**, anything with + is normal. Hue replaces the dark color, so Brown no longer shows. | Hidden |
-| Opal | Sex linkage (X chromosome) | Xᴼ (opal), X⁺ (plain) | Rams have one X: opal or plain. Ewes: one copy **patchy opal**, two copies **full opal**. Sons inherit opal only from their dam. | Visible |
+| Opal *(dev only)* | Sex linkage (X chromosome) | Xᴼ (opal), X⁺ (plain) | Rams have one X: opal or plain. Ewes: one copy **patchy opal**, two copies **full opal**. Sons inherit opal only from their dam. | Visible |
 | Speckle | Mutation | St (normal), st (speckled) | st/st has tiny gold speckles. A normal allele mutates to st in about 1 in 200 gametes. | Visible |
 | Lantern | Lethal allele | L (glow), + (plain) | One copy glows. L/L lambs don't develop, so L/+ × L/+ gives 2 glowing : 1 plain, and smaller litters. | Visible |
 | Gilded | Threshold trait | none (many genes) | Hidden score inherited like fleece traits. Gold-tipped fleece only when the score passes a cutoff. | Visible |
@@ -41,6 +43,7 @@ The existing order stays, with fantasy steps after it:
 - Split `GENES` into `BASE_GENES` and `FANTASY_GENES`. A flock created with `{ fantasy: true }` uses both. A flock exposes `activeGenes()` and the UI only ever iterates that list.
 - Genotypes of non-fantasy flocks have no fantasy keys. Every phenotype function treats a missing gene as its normal allele, so base flocks behave exactly as today.
 - Mark genes with flags the generic code can read: `xLinked` (Opal), `lethal: 'glow'` (Lantern), `mutatesTo: 'speckled'` (Speckle), `hiddenByWhite` (Dilution, Hue).
+- A `dev` flag (Opal) keeps a fantasy gene out unless the flock is created with `devGenes: ['opal']`. The UI passes that only when the page URL has `?dev=opal`.
 
 ### Factored color prediction (do this first)
 
@@ -64,7 +67,7 @@ Ship this refactor with a regression test that compares old and new predictions 
 ### Dilution and Hue
 
 - Join the color factors above. Both are ordinary two-slot genes, so `inheritGenotype`, notes and checks work unchanged.
-- `colorOf` gains `hue` and `shade` fields on the look; `colorKey` includes them.
+- `colorOf` gains a `shade` field on the look, and a showing hue becomes the look's `color` (`rose`, `blue`, `violet`), since it replaces the dark color. `colorKey` includes both.
 
 ### Lantern
 
@@ -79,7 +82,9 @@ Ship this refactor with a regression test that compares old and new predictions 
 - **Predictions** ignore mutation in the percentages and add a one-line footnote.
 - **Surprise checks:** if a speckled lamb is impossible under the guesses but possible once either parent may pass on st, return `{ trait: 'speckle', rare: true }`. The UI shows it as "Rare: could be a new mutation", not as a contradiction.
 
-### Opal (sex-linked)
+### Opal (sex-linked, dev only)
+
+Hidden from players for now: only fantasy flocks started with `?dev=opal` have it. Everything below is built and tested.
 
 - **Storage** keeps the `[fromSire, fromDam]` convention. Rams store `[null, x]` (their sire gave a Y). Ewes store two alleles.
 - **Breeding:** pick each lamb's sex *before* its genotype (today sex is picked after). A ram lamb gets `[null, random dam allele]`. A ewe lamb gets `[sire's X, random dam allele]`.
@@ -96,7 +101,7 @@ Ship this refactor with a regression test that compares old and new predictions 
 
 ### Saving
 
-- Export `v: 2` with a `fantasy` boolean. Import accepts v1 saves as non-fantasy flocks.
+- Export `v: 2` with a `fantasy` boolean and a `devGenes` list. Import accepts v1 saves as non-fantasy flocks. A flock made with a dev gene keeps it after loading, with or without the flag.
 - The scrambled secret includes the new genes and the gild score.
 
 ### Starting frequencies (tune by playtesting)
@@ -105,9 +110,9 @@ Ship this refactor with a regression test that compares old and new predictions 
 |---|---|---|
 | Dilution | dilute 0.3 | 42% dusk, 9% frost (of non-white) |
 | Hue | rose 0.2, blue 0.2 | 4% rose, 4% blue, 8% violet (of non-white) |
-| Opal | opal 0.2 | 20% of rams opal; 32% of ewes patchy, 4% full |
+| Opal (dev only) | opal 0.2 | 20% of rams opal; 32% of ewes patchy, 4% full |
 | Speckle | speckled 0.25 | 6% speckled |
-| Lantern | glow 0.15 | about 28% glowing |
+| Lantern | glow 0.15 | about 26% glowing (L/L founders are redrawn) |
 | Gilded | threshold 1.0 | about 16% gilded |
 
 ## Display changes (js/display.js)
@@ -115,7 +120,7 @@ Ship this refactor with a regression test that compares old and new predictions 
 All CSS, no images:
 
 - **Shade and hue:** one palette table, `PIGMENT[darkColor][shade]`, for black, moorit, rose, blue and violet at full, dusk and frost.
-- **Opal:** a faint pastel conic-gradient overlay. Patchy covers half the swatch; full covers all of it.
+- **Opal:** a faint pastel conic-gradient overlay over the whole swatch. Patchy is soft pastel blobs over about half of it: a half or quarter overlay looked too much like the badgerface/mouflon pattern.
 - **Speckle:** 5–6 tiny gold dots in fixed positions, clearly different from spotting's single white dot.
 - **Gilded:** a thin gold ring.
 - **Lantern:** a soft warm glow around the swatch (`box-shadow`).
@@ -124,7 +129,13 @@ All CSS, no images:
 ## UI changes (js/ui.js)
 
 - **New flock:** a small dialog with an "Include fantasy genes" checkbox. Show a "Fantasy" badge in the header when the flock has it on.
-- **Notes:** fantasy genes go in a collapsible "Fantasy genes" group below the base genes. Opal shows one slot for rams, with "Y" in place of the second. Gilded gets no row, just a line pointing to the guide.
+- **Finding it:** players start with a generated classic flock, so the checkbox alone is easy to miss. Fantasy genes are offered in three places:
+  - the welcome panel, which swaps an untouched starter flock straight away;
+  - the breeding pen, as a dismissible tip after six litters;
+  - the end of the guide.
+  
+  For a flock that's been used, these open the New flock dialog with the box ticked.
+- **Notes:** fantasy genes go in a collapsible "Fantasy genes" group below the base genes. Opal shows one slot for rams, with "Y" in the left slot, where the sire's allele goes everywhere else. Gilded gets no row, just a line pointing to the guide.
 - **Breeding pen:** new prediction rows for shade, dark color, opal by sex, speckle, glow (including "not born") and gilded chance.
 - **Litter history:** show losses gently, e.g. "2 lambs · 1 didn't develop". Lantern's 2:1 ratio is only discoverable if players can see this.
 - **"Guessed to carry" filter:** include the new alleles.
@@ -135,12 +146,12 @@ A "Fantasy genes (made up)" section, shown when the current flock has them on, w
 
 - **Dilution:** Punnett square showing 1 full : 2 dusk : 1 frost.
 - **Hue:** violet × violet Punnett square; note that hue hides brown.
-- **Opal:** a Punnett square with X and Y on the ram's edge, showing that sons get opal only from their dam.
+- **Opal** (only when the flock has it): a Punnett square with X and Y on the ram's edge, showing that sons get opal only from their dam.
 - **Speckle:** Punnett square plus a note on mutation.
 - **Lantern:** Punnett square with the L/L cell marked "doesn't develop", and the 2:1 ratio.
 - **Gilded:** the heritability scatter chart with a threshold line.
 
-Add a final box to the "read a sheep in order" walkthrough: "For any sheep: sheen? speckles? gilded tips? glow?"
+Add a final box to the "read a sheep in order" walkthrough: "For any sheep: sheen? speckles? gilded tips? glow?" (no sheen question without Opal).
 
 ## Tests (js/engine.test.js)
 
@@ -159,14 +170,24 @@ Add a final box to the "read a sheep in order" walkthrough: "For any sheep: shee
 2. **Dilution and Hue,** with the new palette.
 3. **Lantern.**
 4. **Speckle.**
-5. **Opal:** the largest change, because of sex-linked storage.
+5. **Opal:** the largest change, because of sex-linked storage. Now behind the dev flag.
 6. **Gilded.**
 7. **Guide section** and the walkthrough box.
 
 Each step leaves a working game.
 
+## Implementation notes
+
+Where the build differs from or adds to the plan above:
+
+- **Opal is dev-only.** It's complete, but hidden from players until it's wanted.
+- **Living parents aren't L/L.** Predictions and surprise checks treat a parent noted L/? as L/+, so two glowing parents predict exactly 50% glowing, 25% plain, 25% not born.
+- **What counts as rare.** A speckled lamb is marked rare only if one new mutation, in either parent, would explain it. Needing two mutations (about 1 in 40,000) is flagged as a normal surprise.
+- **Pen breakdown.** With fantasy genes, combined looks get numerous, so the pen also shows dark color and shade on their own for lambs that aren't white.
+- **Lost lambs are shown,** gently worded: "2 lambs · 1 didn't develop", and in the toast after breeding.
+
 ## Open decisions
 
-- Whether to show lost lambs in the litter history (recommended: yes, gently worded).
+- Whether and when to release Opal.
 - Founder frequencies, after playtesting.
 - Four horns and ram's mane were left out. Both are low effort and could be added later using the same flags.

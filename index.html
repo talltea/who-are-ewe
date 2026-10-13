@@ -166,13 +166,46 @@
     100% { box-shadow: 0 0 0 0 rgba(29, 29, 27, 0); }
   }
   .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  /* Breed button: Breed / Swap in, Pick (a mate), In pen */
   .pen-btn {
-    width: 28px; height: 28px; border-radius: 50%;
-    border: 1px solid var(--line); background: var(--surface); color: var(--faint);
-    font-size: 13px; line-height: 1;
+    height: 24px; padding: 0 9px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2);
+    font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
   }
-  .pen-btn:hover { color: var(--ink); border-color: var(--line-strong); }
-  .card.in-pen .pen-btn { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pen-btn:hover { border-color: var(--ink); color: var(--ink); }
+  .pen-btn.start, .pen-btn.swap { border-color: var(--line); color: var(--muted); }
+  .card:hover .pen-btn.start, .card:hover .pen-btn.swap { border-color: var(--line-strong); color: var(--ink-2); }
+  .pen-btn.start:hover, .pen-btn.swap:hover { border-color: var(--ink); color: var(--ink); }
+  .pen-btn.pick { border: 1.5px solid var(--ink); color: var(--ink); }
+  .pen-btn.pick:hover, .pen-btn.out { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pen-btn.out::before { content: "✓ "; }
+  .card.is-unavailable { opacity: 0.42; }
+  .card.is-unavailable:hover, .card.is-unavailable:focus-visible { opacity: 0.75; }
+  /* the selected sheep's sire and dam */
+  .card.is-parent { border-style: dashed; border-color: var(--ink-2); }
+  .kin-tag {
+    position: absolute; top: -9px; left: 10px; padding: 0 6px;
+    border: 1px solid var(--ink-2); border-radius: 999px; background: var(--surface); color: var(--ink-2);
+    font-size: 10px; font-weight: 650; line-height: 16px; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .pick-banner {
+    display: flex; align-items: center; gap: 10px; margin: 0 20px 12px; padding: 8px 10px 8px 12px;
+    border: 1.5px solid var(--ink); border-radius: var(--radius); background: var(--surface); font-size: 13.5px;
+  }
+  .pick-banner > span:not(.swatch) { flex: 1; min-width: 0; }
+  .invite {
+    position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    margin: 14px 0; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: var(--radius);
+    background: var(--surface-2); font-size: 13px;
+  }
+  .invite span { color: var(--muted); }
+  .invite .btn { margin-top: 4px; }
+  .invite-x {
+    position: absolute; top: 6px; right: 6px; width: 24px; height: 24px;
+    border: 0; border-radius: 50%; background: none; color: var(--faint); font-size: 16px; line-height: 1;
+  }
+  .invite-x:hover { background: var(--hover); color: var(--ink); }
+  .guide-invite { margin-top: 36px; max-width: 68ch; padding-right: 14px; }
   .card-name { display: flex; align-items: baseline; gap: 6px; font-weight: 600; min-width: 0; }
   .card-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card-name .sex { color: var(--muted); font-weight: 400; }
@@ -705,6 +738,7 @@
   @media (max-width: 560px) {
     .topbar { gap: 10px; padding: 0 12px; }
     .toolbar, .flock-count, .grid { padding-left: 16px; padding-right: 16px; }
+    .pick-banner { margin-left: 16px; margin-right: 16px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
     .side-body { padding: 16px; }
     .bar-row { grid-template-columns: 96px 1fr 70px; }
@@ -767,6 +801,7 @@
         <button class="btn btn-primary" data-act="add">+ Random sheep</button>
       </div>
       <div class="flock-count" id="flock-count"></div>
+      <div class="pick-banner" id="pick-banner" role="status" hidden></div>
       <div class="grid" id="grid"></div>
     </div>
     <aside class="side" id="side">

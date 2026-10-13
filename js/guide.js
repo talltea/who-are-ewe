@@ -1040,7 +1040,11 @@
       'it never looks at your flock.' + (fantasy ? ' Your flock has fantasy genes, so the last section covers those.' : '') + '</p></header>' +
       section(0, basics) + section(1, color) + section(2, genes) + section(3, horns) +
       section(4, booroola) + section(5, fleece) + section(6, inbreeding) + section(7, detective) +
-      (fantasy ? section(8, fantasyHTML(), sections) : '') +
+      (fantasy ? section(8, fantasyHTML(), sections)
+        : '<aside class="invite guide-invite"><b>Ready for more?</b> <span>Fantasy genes add five made-up genes on top of the real ones. ' +
+          'Each shows a real way genes behave that sheep color doesn\'t: incomplete dominance, codominance, mutation, a lethal allele ' +
+          'and a threshold trait. Start a fantasy flock and this guide gains a section on them.</span>' +
+          '<button class="btn btn-small" data-act="try-fantasy">Start a fantasy flock</button></aside>') +
       '</article></div>';
   }
 
