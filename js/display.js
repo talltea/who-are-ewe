@@ -36,6 +36,21 @@
   const SPECK_LAYERS = SPECKS.map(([x, y]) =>
     'radial-gradient(6% 6% at ' + x + '% ' + y + '%, #f1c232 50%, #8f6508 68%, transparent 76%)').join(', ');
 
+  // Horns: curled for rams, short and swept back for ewes. Paths are in swatch
+  // units (the circle spans 0 to 100) and may reach past its edge. Each horn is
+  // drawn twice, a dark edge under a light fill; the right one is the left mirrored.
+  const HORN_PATH = {
+    ram: 'M33 6 C 20 -5, 0 -2, -9 17 C -16 33, -4 50, 8 43 C 17 38, 13 25, 3 28',
+    ewe: 'M36 6 C 31 -6, 18 -12, 7 -4',
+  };
+
+  function hornsSVG(sex) {
+    const kind = sex === 'ram' ? 'ram' : 'ewe';
+    const one = '<path class="horn-edge" d="' + HORN_PATH[kind] + '"/><path class="horn-fill" d="' + HORN_PATH[kind] + '"/>';
+    return '<svg class="horns horns-' + kind + '" viewBox="-20 -20 140 140" aria-hidden="true">' + one +
+      '<g transform="matrix(-1 0 0 1 100 0)">' + one + '</g></svg>';
+  }
+
   const COLOR_NAME = { white: 'White', black: 'Black', brown: 'Moorit', rose: 'Rose', blue: 'Blue', violet: 'Violet' };
   const SHADE_NAME = { full: 'Full', dusk: 'Dusk', frost: 'Frost' };
   const PATTERN_NAME = {
@@ -133,16 +148,20 @@
     }
   }
 
-  /** Round swatch as an HTML string. size: xs | sm | md | lg | xl */
+  /** Round swatch as an HTML string, with horns if the look is horned. size: xs | sm | md | lg | xl */
   function swatch(look, size) {
     const cls = ['swatch', 'swatch-' + (size || 'md')];
     if (look.color === 'white') cls.push('is-white');
     if (look.spotted && look.color !== 'white') cls.push('is-spotted');
     if (look.gilded) cls.push('is-gilded');
     if (look.glow) cls.push('is-glowing');
-    const label = title(look);
+    if (look.horned && size !== 'xs') cls.push('has-horns');
+    // Predicted looks have no horned field, so only real sheep get horns.
+    // The smallest swatches leave them out: at 14px they're just specks.
+    const label = title(look) + (look.horned ? ', horned' : '');
+    const horns = look.horned && size !== 'xs' ? hornsSVG(look.sex) : '';
     return '<span class="' + cls.join(' ') + '" style="background:' + background(look) +
-      '" role="img" aria-label="' + label + '" title="' + label + '"></span>';
+      '" role="img" aria-label="' + label + '" title="' + label + '">' + horns + '</span>';
   }
 
   /** An empty dashed circle, for a lamb that doesn't develop. */

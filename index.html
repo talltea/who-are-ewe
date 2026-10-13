@@ -128,6 +128,15 @@
   .swatch.is-gilded { --gild: 0 0 0 var(--ring) #c9971f; }
   .swatch.is-glowing { --halo: 0 0 calc(var(--ring) * 4) calc(var(--ring) * 1.6) rgba(255, 184, 60, 0.8); }
   .swatch.is-empty { background: none; box-shadow: none; border: 1.5px dashed var(--line-strong); }
+  /* horns sit on top of the coat and may reach past the circle */
+  .swatch .horns { position: absolute; left: -20%; top: -20%; width: 140%; height: 140%; overflow: visible; pointer-events: none; }
+  .horns path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .horns .horn-edge { stroke: #5e4d35; stroke-width: 13; }
+  .horns .horn-fill { stroke: #e9dcbc; stroke-width: 8.5; }
+  .horns-ewe .horn-edge { stroke-width: 10; }
+  .horns-ewe .horn-fill { stroke-width: 6; }
+  /* small swatches sit inline next to text, so leave room for the horns */
+  .swatch-sm.has-horns { margin-left: 4px; margin-right: 4px; }
 
   /* ---------- flock view layout ---------- */
   .view-flock {
@@ -701,6 +710,7 @@
     min-width: 104px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px;
   }
   .pn-gt { white-space: nowrap; font-weight: 600; }
+  .pn-horn { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; }
   .pn-look { max-width: 112px; font-size: 11px; color: var(--muted); text-align: center; line-height: 1.25; }
   .pn-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 12px; font-size: 13px; }
   .pn-out { display: inline-flex; align-items: center; gap: 6px; }

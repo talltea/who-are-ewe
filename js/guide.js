@@ -403,8 +403,8 @@
           const ewe = E.phenotypeOf(g, 'ewe');
           if (ram.horned) tally.set('ram', (tally.get('ram') || 0) + share);
           if (ewe.horned) tally.set('ewe', (tally.get('ewe') || 0) + share);
-          rows += '<td><div class="pn-cell"><span class="pn-gt">' + gt + '</span>' +
-            '<span class="tag">' + D.describe(ram).hornTag + '</span><span class="tag">' + D.describe(ewe).hornTag + '</span></div></td>';
+          const tag = look => '<span class="pn-horn">' + D.swatch(look, 'sm') + '<span class="tag">' + D.describe(look).hornTag + '</span></span>';
+          rows += '<td><div class="pn-cell"><span class="pn-gt">' + gt + '</span>' + tag(ram) + tag(ewe) + '</div></td>';
         } else if (E.GENES.some(gene => gene.lethal && cfg.genes.includes(gene.key) && g[gene.key].every(a => a === gene.lethal))) {
           count('lost', null);
           rows += '<td><div class="pn-cell is-lost">' + D.emptySwatch('sm', 'Doesn\'t develop') + '<span class="pn-gt">' + gt + '</span>' +
@@ -460,6 +460,7 @@
   function provesHTML() {
     const L = (color, pattern, spotted) => ({ sex: 'ewe', color, pattern, spotted: !!spotted, horned: false });
     const sw = look => D.swatch(look, 'sm');
+    const H = (sex, horned) => ({ sex, color: 'white', pattern: 'none', spotted: false, horned });
     const Ep2 = S.Ep + '/' + S.Ep;
     const group = name => '<tr class="group"><th colspan="3">' + name + '</th></tr>';
     const row = (look, name, proves, open) =>
@@ -477,10 +478,10 @@
       row(sw(L('black', 'solid')), 'No white patches', 'At least one ' + S.S + '.', 'Whether it carries ' + S.s + '.') +
       row(sw(L('black', 'solid', true)), 'White patches', S.s + '/' + S.s + '.', 'Nothing.') +
       group('Horns') +
-      row('', D.sexIcon('ram') + ' Horned ram', 'At least one H.', 'Whether it carries P.') +
-      row('', D.sexIcon('ram') + ' Polled ram', 'P/P.', 'Nothing.') +
-      row('', D.sexIcon('ewe') + ' Horned ewe', 'H/H.', 'Nothing.') +
-      row('', D.sexIcon('ewe') + ' Polled ewe', 'At least one P.', 'Whether it carries H.') +
+      row(sw(H('ram', true)), D.sexIcon('ram') + ' Horned ram', 'At least one H.', 'Whether it carries P.') +
+      row(sw(H('ram', false)), D.sexIcon('ram') + ' Polled ram', 'P/P.', 'Nothing.') +
+      row(sw(H('ewe', true)), D.sexIcon('ewe') + ' Horned ewe', 'H/H.', 'Nothing.') +
+      row(sw(H('ewe', false)), D.sexIcon('ewe') + ' Polled ewe', 'At least one P.', 'Whether it carries H.') +
       '</tbody></table></div>';
   }
 
@@ -490,8 +491,8 @@
     return '<table class="data"><thead><tr><th>Horn alleles</th><th>In a ram</th><th>In a ewe</th></tr></thead><tbody>' +
       [['horned', 'horned'], ['horned', 'polled'], ['polled', 'polled']].map(p => {
         const g = geno({ horns: p });
-        return '<tr><th scope="row">' + pairSym('horns', p) + '</th><td>' + D.describe(E.phenotypeOf(g, 'ram')).hornTag +
-          '</td><td>' + D.describe(E.phenotypeOf(g, 'ewe')).hornTag + '</td></tr>';
+        const cell = sex => { const look = E.phenotypeOf(g, sex); return '<span class="look-chip">' + D.swatch(look, 'sm') + D.describe(look).hornTag + '</span>'; };
+        return '<tr><th scope="row">' + pairSym('horns', p) + '</th><td>' + cell('ram') + '</td><td>' + cell('ewe') + '</td></tr>';
       }).join('') + '</tbody></table>';
   }
 
