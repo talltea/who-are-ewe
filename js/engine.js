@@ -160,9 +160,9 @@
   const BREEDING_LIMIT = { ram: 10, ewe: 5 };
 
   // Most sheep the game's flock holds. Only sheep that can still breed count:
-  // retired and removed ones don't. At the limit, breeding and "+ Random sheep"
-  // stop until some are removed or retire. A litter born just under it can take
-  // the flock up to 2 over.
+  // retired ones don't. At the limit, breeding, "+ Random sheep" and returning
+  // sheep to breeding stop until some retire. A litter born just under it can
+  // take the flock up to 2 over.
   const MAX_FLOCK_SIZE = 60;
 
   // Chance of a litter of 1, 2 or 3 by the ewe's number of Booroola copies.
@@ -967,16 +967,28 @@
 
     function rec(id) { return sheep.get(id) || null; }
 
-    // How many more sheep fit before the flock is full. Retired sheep take no space.
+    // A sheep retires when it reaches its breeding limit, or early when the
+    // player retires it. Retired sheep stay in the records but take no space.
+    const takesSpace = r => !r.retired && r.litters.length < BREEDING_LIMIT[r.sex];
+
+    // How many more sheep fit before the flock is full.
     function room() {
       let n = 0;
-      for (const r of sheep.values()) if (!r.removed && r.litters.length < BREEDING_LIMIT[r.sex]) n++;
+      for (const r of sheep.values()) if (takesSpace(r)) n++;
       return maxSize - n;
     }
 
     function breedingsLeft(id) {
       const r = rec(id);
-      return r ? Math.max(0, BREEDING_LIMIT[r.sex] - r.litters.length) : 0;
+      return r && !r.retired ? Math.max(0, BREEDING_LIMIT[r.sex] - r.litters.length) : 0;
+    }
+
+    // A sheep retired early can breed again, if a full flock has room for it.
+    function unretire(id) {
+      const r = rec(id);
+      if (!r || !r.retired) return;
+      if (takesSpace(Object.assign({}, r, { retired: false })) && room() <= 0) throw new Error('Flock is full');
+      delete r.retired;
     }
 
     function kinship(a, b) {
@@ -1004,6 +1016,35 @@
       return 2 * kinship(a, b) / Math.sqrt((1 + (ra.inbreeding || 0)) * (1 + (rb.inbreeding || 0)));
     }
 
+    // The breeding flock: sheep that will pass on more genes. Retired sheep
+    // and those with no breedings left don't count.
+    const breeders = () => [...sheep.values()].filter(takesSpace);
+
+    // How related a sheep is to the breeding flock: its average relatedness to
+    // every breeding sheep but itself. Low means its genes are rare there.
+    // Null when there's no other breeding sheep.
+    function relatednessToFlock(id) {
+      if (!rec(id)) return null;
+      const others = breeders().filter(r => r.id !== id);
+      if (!others.length) return null;
+      return others.reduce((sum, r) => sum + relatedness(id, r.id), 0) / others.length;
+    }
+
+    // Diversity of the breeding flock, from the pedigree: 1 minus the average
+    // kinship of every pair of breeding sheep, that is, minus how inbred a
+    // lamb of two of them picked at random would be. It's 1 when no two share
+    // an ancestor and falls as more of the flock descends from the same few.
+    // Null with fewer than two breeding sheep.
+    function diversity() {
+      const pool = breeders();
+      if (pool.length < 2) return null;
+      let sum = 0;
+      for (let i = 0; i < pool.length; i++) {
+        for (let j = i + 1; j < pool.length; j++) sum += kinship(pool[i].id, pool[j].id);
+      }
+      return 1 - sum / (pool.length * (pool.length - 1) / 2);
+    }
+
     function makeRecord(fields, genotype, gv) {
       const id = 's' + nextId++;
       const r = {
@@ -1019,7 +1060,6 @@
           fleece: measureFleece(rng, gv, fields.inbreeding || 0),
         }),
         litters: [],
-        removed: false,
       };
       sheep.set(id, r);
       secret.set(id, { genotype, gv });
@@ -1051,7 +1091,6 @@
       const d = rec(damId);
       if (!s || !d) throw new Error('Unknown sheep');
       if (s.sex !== 'ram' || d.sex !== 'ewe') throw new Error('Need a ram and a ewe');
-      if (s.removed || d.removed) throw new Error('Both parents must be in the flock');
       if (!breedingsLeft(sireId) || !breedingsLeft(damId)) throw new Error('Breeding limit reached');
       if (room() <= 0) throw new Error('Flock is full');
       const ss = secret.get(sireId);
@@ -1205,6 +1244,9 @@
       const nextSecret = new Map();
       for (const r of state.sheep) {
         if (!r || !r.id || !s[r.id]) throw new Error('Save is missing data for ' + (r && r.name));
+        // Older saves could remove a sheep from the flock; that's retiring now.
+        if (r.removed) r.retired = true;
+        delete r.removed;
         nextSheep.set(r.id, r);
         nextSecret.set(r.id, s[r.id]);
       }
@@ -1226,7 +1268,7 @@
     const api = {
       get fantasy() { return fantasy; },
       activeGenes: () => genesOn().slice(),
-      list: (o) => [...sheep.values()].filter(r => (o && o.includeRemoved) || !r.removed),
+      list: () => [...sheep.values()],
       get: rec,
       addSheep,
       breed,
@@ -1237,11 +1279,13 @@
       lastBreeding: () => history[history.length - 1] || null,
       undoLastBreeding,
       rename(id, name) { const r = rec(id); if (r && name) r.name = name; },
-      remove(id) { const r = rec(id); if (r) r.removed = true; },
-      restore(id) { const r = rec(id); if (r) r.removed = false; },
+      retire(id) { const r = rec(id); if (r) r.retired = true; },
+      unretire,
       kinship,
       offspringInbreeding: (sireId, damId) => kinship(sireId, damId),
       relatedness,
+      relatednessToFlock,
+      diversity,
       predictFleece,
       predictGilded,
       checkSureGuesses,

@@ -156,6 +156,34 @@
     }
 
     // ------------------------------------------------------------------
+    heading('Relatedness to the flock and diversity');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(5) });
+      const a = f.addSheep({ sex: 'ram' });
+      const b = f.addSheep({ sex: 'ewe' });
+      const c = f.addSheep({ sex: 'ewe' });
+      check('unrelated founders: diversity 100%, each 0% related to the flock',
+        f.diversity() === 1 && [a, b, c].every(r => f.relatednessToFlock(r.id) === 0));
+      // Keep one lamb of a and b breeding.
+      const [lamb, ...rest] = f.breed(a.id, b.id).lambs;
+      for (const r of rest) f.retire(r.id);
+      // Breeding: a, b, c, lamb. Kinship of each parent with the lamb is 25%,
+      // every other pair 0, so the 6 pairs average 0.5 / 6.
+      near('diversity with one lamb of two founders', f.diversity(), 1 - 0.5 / 6, 1e-9);
+      near('the lamb is 50% related to both parents and 0% to the third founder', f.relatednessToFlock(lamb.id), 1 / 3, 1e-9);
+      near('a parent is related to the flock through its lamb only', f.relatednessToFlock(a.id), 1 / 6, 1e-9);
+      check('the unrelated founder stays at 0%', f.relatednessToFlock(c.id) === 0);
+      f.retire(lamb.id);
+      check('retired sheep don\'t count toward relatedness or diversity',
+        f.diversity() === 1 && f.relatednessToFlock(a.id) === 0);
+      near('a retired sheep is still measured against the breeding flock', f.relatednessToFlock(lamb.id), 1 / 3, 1e-9);
+      const one = E.createFlock({ rng: E.mulberry32(6) });
+      const only = one.addSheep({ sex: 'ewe' });
+      check('one breeding sheep: no diversity or relatedness to measure',
+        one.diversity() === null && one.relatednessToFlock(only.id) === null);
+    }
+
+    // ------------------------------------------------------------------
     heading('Predictions from guesses');
     const guess = over => Object.assign(E.blankGuess(), over);
     const known = {
@@ -328,14 +356,47 @@
       let refused = false;
       try { f.breed(ram.id, ewe.id); } catch (e) { refused = /full/.test(e.message); }
       check('a full flock can\'t breed', refused);
-      for (const r of f.list()) if (r.id !== ram.id && r.id !== ewe.id) f.remove(r.id);
-      check('removed sheep don\'t count', f.room() === 2);
-      check('after removing some, breeding works again', f.breed(ram.id, ewe.id).event !== undefined);
+      for (const r of f.list()) if (r.id !== ram.id && r.id !== ewe.id) f.retire(r.id);
+      check('sheep retired early don\'t count', f.room() === 2);
+      check('after retiring some, breeding works again', f.breed(ram.id, ewe.id).event !== undefined);
       const g = E.createFlock({ rng: E.mulberry32(7), maxSize: 100 });
       const r2 = g.addSheep({ sex: 'ram' });
       const e2 = g.addSheep({ sex: 'ewe' });
       for (let i = 0; i < E.BREEDING_LIMIT.ewe; i++) g.breed(r2.id, e2.id);
       check('retired sheep take no space', g.room() === 100 - (g.list().length - 1), 'room ' + g.room() + ' with ' + g.list().length + ' sheep');
+
+      const h = E.createFlock({ rng: E.mulberry32(8), maxSize: 3 });
+      const ram3 = h.addSheep({ sex: 'ram' });
+      const ewe3 = h.addSheep({ sex: 'ewe' });
+      const spare = h.addSheep({ sex: 'ewe' });
+      h.retire(spare.id);
+      check('a sheep retired early can\'t breed', h.breedingsLeft(spare.id) === 0);
+      check('a sheep retired early takes no space', h.room() === 1);
+      let threw = false;
+      try { h.breed(ram3.id, spare.id); } catch (e) { threw = true; }
+      check('breeding a sheep retired early is refused', threw);
+      h.addSheep({ sex: 'ram' });
+      threw = false;
+      try { h.unretire(spare.id); } catch (e) { threw = /full/.test(e.message); }
+      check('a full flock can\'t take a sheep back to breeding', threw && h.get(spare.id).retired === true);
+      h.retire(ewe3.id);
+      h.unretire(spare.id);
+      check('with room, a sheep returns to breeding', !h.get(spare.id).retired && h.breedingsLeft(spare.id) === E.BREEDING_LIMIT.ewe);
+      check('retired sheep stay in the records', h.list().length === 4 && !!h.get(ewe3.id));
+      const saved = JSON.parse(JSON.stringify(h.exportState()));
+      const back = E.createFlock({ maxSize: 3 });
+      back.importState(JSON.parse(JSON.stringify(saved)));
+      check('early retirement is saved', back.get(ewe3.id).retired === true && back.room() === h.room());
+      // Saves from when sheep could be removed from the flock: removed ones load as retired.
+      const old = JSON.parse(JSON.stringify(saved));
+      const oldEwe = old.sheep.find(r => r.id === ewe3.id);
+      delete oldEwe.retired;
+      oldEwe.removed = true;
+      for (const r of old.sheep) if (r.id !== ewe3.id) r.removed = false;
+      const migrated = E.createFlock({ maxSize: 3 });
+      migrated.importState(old);
+      check('a removed sheep in an older save loads as retired', migrated.get(ewe3.id).retired === true &&
+        migrated.list().every(r => !('removed' in r)) && migrated.room() === h.room());
     }
 
     // ------------------------------------------------------------------

@@ -986,7 +986,13 @@
         .map(([who, rel, F]) => '<tr><td>' + who + '</td><td>' + rel + '</td><td>' + F + '</td></tr>').join('') + '</tbody></table>' +
       '<p>Inbreeding brings hidden recessives into the open, which helps detective work, but it has a cost. In this sandbox, every 10% of inbreeding ' +
       'pushes each fleece measurement about ' + pen10.toFixed(2) + ' standard deviations the wrong way (about ' + (pen10 * diam.sd).toFixed(1) + ' ' +
-      diam.unit + ' coarser fiber) and makes an inbred ewe ' + Math.round(E.INBREEDING_LITTER_PENALTY * 10) + '% less likely to have twins or triplets.</p>';
+      diam.unit + ' coarser fiber) and makes an inbred ewe ' + Math.round(E.INBREEDING_LITTER_PENALTY * 10) + '% less likely to have twins or triplets.</p>' +
+      '<p>Two more numbers look at the whole flock, counting only sheep that can still breed. A sheep\'s <b>relatedness to the flock</b> ' +
+      'is its average relatedness to all of them, shown in its pedigree. Low means its genes are rare in the flock, so its lambs keep ' +
+      'variety going; sort by <b>Related to flock</b> to find these sheep. The flock\'s <b>diversity</b>, next to the sheep count, is 100% minus how ' +
+      'inbred a lamb of two breeding sheep picked at random would be. It starts at 100% with unrelated founders and tends to fall over ' +
+      'the generations as more of the flock descends from the same few sheep. Adding random sheep raises it, and so does retiring sheep ' +
+      'whose genes are already common.</p>';
 
     const detective =
       '<h3>What a sheep\'s look proves</h3>' +

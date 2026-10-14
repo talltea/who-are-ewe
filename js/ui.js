@@ -58,10 +58,8 @@
     allele: '',
     sort: 'born',
     dir: 1,
-    showRemoved: false,
     suggest: false,
     renaming: false,
-    removeArmed: false,
     lastLitter: null,
     fantasyNotes: true,
     hideInvite: false,
@@ -70,6 +68,10 @@
     goalOnly: false,
     goalOpen: false,
     genOpen: {}, // generation -> true/false, where the player opened or closed it
+    // Select mode: clicking cards ticks them, to retire several at once. Not saved.
+    selecting: false,
+    chosen: new Set(),
+    lastChosen: null, // where a shift-click run starts
   };
   const fresh = new Map(); // id -> time it arrived, for the highlight
   const FRESH_MS = 2400;
@@ -103,7 +105,7 @@
   }
 
   function nameFor(sex) {
-    const used = new Set(flock ? flock.list({ includeRemoved: true }).map(r => r.name) : []);
+    const used = new Set(flock ? flock.list().map(r => r.name) : []);
     const names = NAMES.concat(SEX_NAMES[sex] || []);
     for (let k = 1; ; k++) {
       const pool = names.map(n => (k === 1 ? n : n + ' ' + roman(k))).filter(n => !used.has(n));
@@ -123,14 +125,24 @@
   function retired(r) { return flock.breedingsLeft(r.id) === 0; }
 
   function retiredText(r) {
+    if (r.retired) return r.name + ' is retired from breeding.';
     return r.name + ' has been bred ' + plural(r.litters.length, 'time') + ', the most a ' + r.sex + ' can be.';
   }
 
-  // When the flock reaches E.MAX_FLOCK_SIZE sheep that can still breed, nothing new can join until some are removed or retire.
+  // Whether a sheep has breedings left by count, retired early or not.
+  const couldBreed = r => r.litters.length < E.BREEDING_LIMIT[r.sex];
+
+  // When the flock reaches E.MAX_FLOCK_SIZE sheep that can still breed, nothing new can join until some retire.
   function fullText() {
     const n = flock.list().filter(r => !retired(r)).length;
     return 'The flock is full: ' + n + ' sheep that can still breed, the most it can hold. Retired sheep don\'t count. ' +
-      'Remove some to make room.';
+      'Retire some to make room.';
+  }
+
+  // Bringing sheep back when there's room for only some of them.
+  function noRoomText(n) {
+    const room = Math.max(0, flock.room());
+    return room ? 'There\'s room for only ' + room + ' more sheep that can breed, not ' + n + '. Retire some first.' : fullText();
   }
 
   // ---------------------------------------------------- picking a pair
@@ -149,7 +161,6 @@
 
   // What a card's breed button does right now, or null if there's no button.
   function penAction(r) {
-    if (r.removed) return null;
     if (ui.pen[r.sex] === r.id) return { act: 'out', label: 'In pen', title: 'In the breeding pen. Click to take ' + r.name + ' out.' };
     if (retired(r)) return null;
     const w = waiting();
@@ -176,8 +187,8 @@
   function pickBanner() {
     const w = waiting();
     const el = $('pick-banner');
-    el.hidden = !w;
-    if (!w) return;
+    el.hidden = !w || ui.selecting;
+    if (el.hidden) return;
     el.innerHTML = D.swatch(w.phenotype, 'sm') + '<span>Pick a <b>' + otherSex(w.sex) + '</b> to breed with ' + esc(w.name) +
       '. Each card shows how related it is to ' + esc(w.name) + '.</span>' +
       '<button class="btn btn-small" data-act="cancel-pick">Cancel</button>';
@@ -403,7 +414,7 @@
     let sheep = 0;
     let checked = 0;
     const withMistakes = [];
-    for (const r of flock.list({ includeRemoved: true })) {
+    for (const r of flock.list()) {
       const res = runCheck(r.id);
       if (!res) continue;
       sheep++;
@@ -504,7 +515,7 @@
   function persistUi() {
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
-      sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir, showRemoved: ui.showRemoved,
+      sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir,
       fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite, showRetired: ui.showRetired, starredOnly: ui.starredOnly, goalOnly: ui.goalOnly, genOpen: ui.genOpen,
     };
   }
@@ -537,7 +548,7 @@
     notes = sanitizeNotes(data.notes);
     goal = sanitizeGoal(data.goal);
     goalCache.clear();
-    for (const r of flock.list({ includeRemoved: true })) noteFor(r.id);
+    for (const r of flock.list()) noteFor(r.id);
     const u = data.ui || {};
     ui.view = u.view === 'guide' ? 'guide' : 'flock';
     ui.side = u.side === 'breed' ? 'breed' : 'sheep';
@@ -546,14 +557,13 @@
     if (u.pen) {
       for (const sex of ['ram', 'ewe']) {
         const r = u.pen[sex] && flock.get(u.pen[sex]);
-        if (r && !r.removed && r.sex === sex) ui.pen[sex] = r.id;
+        if (r && r.sex === sex) ui.pen[sex] = r.id;
       }
     }
     ui.sex = ['all', 'ram', 'ewe'].includes(u.sex) ? u.sex : 'all';
     ui.allele = typeof u.allele === 'string' ? u.allele : '';
     ui.sort = typeof u.sort === 'string' ? u.sort : 'born';
     ui.dir = u.dir === -1 ? -1 : 1;
-    ui.showRemoved = !!u.showRemoved;
     ui.fantasyNotes = u.fantasyNotes !== false;
     ui.hideInvite = !!u.hideInvite;
     ui.showRetired = !!u.showRetired;
@@ -566,6 +576,8 @@
     ui.lastLitter = null;
     ui.suggest = false;
     ui.renaming = false;
+    ui.selecting = false;
+    ui.chosen.clear();
     surpriseCache.clear();
     checks.clear();
   }
@@ -595,7 +607,8 @@
     goal = blankGoal();
     goalCache.clear();
     for (const r of flock.list()) noteFor(r.id);
-    Object.assign(ui, { selected: null, side: 'sheep', pen: { ram: null, ewe: null }, lastLitter: null, suggest: false, renaming: false, genOpen: {} });
+    Object.assign(ui, { selected: null, side: 'sheep', pen: { ram: null, ewe: null }, lastLitter: null, suggest: false, renaming: false, genOpen: {}, selecting: false });
+    ui.chosen.clear();
     surpriseCache.clear();
     checks.clear();
   }
@@ -631,16 +644,30 @@
   // ------------------------------------------------------------- toast
 
   let toastTimer = null;
-  function toast(msg) {
+  let toastAction = null;
+  // An action, like Undo, shows as a button and keeps the toast up longer.
+  function toast(msg, action) {
     const el = $('toast');
     el.textContent = msg;
+    toastAction = action ? action.run : null;
+    if (action) {
+      const b = document.createElement('button');
+      b.className = 'toast-action';
+      b.textContent = action.label;
+      el.append(' ', b);
+    }
+    // Sit above the select bar when it's on screen.
+    const bar = $('select-bar');
+    const top = bar.hidden ? Infinity : bar.getBoundingClientRect().top;
+    el.style.bottom = top < innerHeight ? Math.max(24, innerHeight - top + 12) + 'px' : '';
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, 3200);
+    toastTimer = setTimeout(hideToast, action ? 7000 : 3200);
   }
 
   function hideToast() {
     clearTimeout(toastTimer);
+    toastAction = null;
     $('toast').classList.remove('show');
   }
 
@@ -649,13 +676,13 @@
   // Retired sheep are hidden unless asked for, or unless they're selected, in
   // the pen, or a parent of the selected sheep.
   function hiddenRetired(r) {
-    if (ui.showRetired || r.removed || !retired(r) || isStarred(r.id)) return false;
+    if (ui.showRetired || !retired(r) || isStarred(r.id)) return false;
     const sel = ui.selected && flock.get(ui.selected);
     return r.id !== ui.selected && r.id !== ui.pen.ram && r.id !== ui.pen.ewe && !(sel && (sel.sire === r.id || sel.dam === r.id));
   }
 
   function visibleSheep() {
-    let list = flock.list({ includeRemoved: ui.showRemoved }).filter(r => !hiddenRetired(r));
+    let list = flock.list().filter(r => !hiddenRetired(r));
     if (ui.starredOnly) list = list.filter(r => isStarred(r.id));
     if (ui.goalOnly && hasGoalAlleles()) list = list.filter(r => goalOf(r).status !== 'no');
     if (ui.sex !== 'all') list = list.filter(r => r.sex === ui.sex);
@@ -664,7 +691,9 @@
       list = list.filter(r => notes[r.id] && notes[r.id].genes[gene] && notes[r.id].genes[gene].some(s => s.a === a));
     }
     const trait = E.TRAIT[ui.sort];
+    const kin = ui.sort === 'kin' && new Map(list.map(r => [r.id, flock.relatednessToFlock(r.id) || 0]));
     const key = trait ? r => r.phenotype.fleece[trait.key]
+      : kin ? r => kin.get(r.id)
       : ui.sort === 'name' ? r => r.name.toLowerCase()
       : ui.sort === 'gen' ? r => r.gen
       : r => r.born;
@@ -707,23 +736,29 @@
     const d = D.describe(r.phenotype);
     const issues = lambIssues(r);
     const cls = ['card'];
-    if (r.id === ui.selected) cls.push('is-selected');
-    if (r.removed) cls.push('is-removed');
+    // In select mode a card is only ticked or not: no pen button, pick fading or parent marks.
+    const choosing = ui.selecting;
+    const chosen = choosing && ui.chosen.has(r.id);
+    if (r.id === ui.selected && !choosing) cls.push('is-selected');
+    if (chosen) cls.push('is-chosen');
     const age = fresh.has(r.id) ? Date.now() - fresh.get(r.id) : Infinity;
     if (age < FRESH_MS) cls.push('is-fresh');
-    const act = penAction(r);
-    const w = waiting();
+    const act = choosing ? null : penAction(r);
+    const w = choosing ? null : waiting();
     // While a sheep waits for a mate, everything it can't be paired with fades back.
     if (w && r.id !== w.id && (!act || act.act !== 'pick')) cls.push('is-unavailable');
     // Gently mark the selected sheep's parents.
-    const sel = ui.selected && flock.get(ui.selected);
+    const sel = !choosing && ui.selected && flock.get(ui.selected);
     const kin = sel && (sel.sire === r.id ? 'Sire' : sel.dam === r.id ? 'Dam' : '');
     if (kin) cls.push('is-parent');
     if (isStarred(r.id)) cls.push('is-starred');
     const trait = E.TRAIT[ui.sort];
+    const kinship = ui.sort === 'kin' ? flock.relatednessToFlock(r.id) : null;
     const stat = trait
       ? '<div class="card-stat">' + r.phenotype.fleece[trait.key].toFixed(1) + ' <small>' + trait.unit + '</small></div>'
-      : '';
+      : kinship !== null
+        ? '<div class="card-stat" title="' + esc(flockKinTip(r)) + '">' + pct(kinship) + ' <small>to flock</small></div>'
+        : '';
     const real = issues.filter(i => !i.rare);
     const flag = real.length
       ? '<div class="card-flag" title="This lamb looks impossible under your guesses. Check: ' + esc(surpriseText(r, real)) + '">' +
@@ -736,15 +771,17 @@
     const mistake = wrong.length
       ? '<div class="card-flag"><span class="flag-dot">✗</span><span>Wrong sure guess: ' + wrong.join(', ') + '</span></div>'
       : '';
-    const pen = act ? penButton(r, act, 'pen-btn ' + act.act) : '';
+    const pen = choosing ? '<span class="tick" aria-hidden="true"></span>' : act ? penButton(r, act, 'pen-btn ' + act.act) : '';
+    const star = !choosing ? starButton(r, 'star') : isStarred(r.id) ? '<span class="star on" title="Starred">★</span>' : '';
     return '<div class="' + cls.join(' ') + '"' + (age < FRESH_MS ? ' style="animation-delay:-' + age + 'ms"' : '') +
-      ' data-id="' + r.id + '" data-fk="card-' + r.id + '" tabindex="0" role="button" aria-label="' +
+      ' data-id="' + r.id + '" data-fk="card-' + r.id + '" tabindex="0" ' +
+      (choosing ? 'role="checkbox" aria-checked="' + chosen + '"' : 'role="button"') + ' aria-label="' +
       esc(r.name + ', ' + d.sex + ', ' + d.title + (kin ? ', ' + kin.toLowerCase() + ' of ' + sel.name : '')) + '">' +
       (kin ? '<span class="kin-tag" title="' + esc(sel.name) + '\'s ' + kin.toLowerCase() + '">' + kin + '</span>' : '') +
       '<div class="card-top">' + D.swatch(r.phenotype, 'md') + pen + '</div>' +
       '<div class="card-name"><span class="nm">' + esc(r.name) + '</span><span class="sex" title="' + d.sex + '">' + d.sexIcon + '</span>' +
-      starButton(r, 'star') + '</div>' +
-      '<div class="card-meta">Gen ' + r.gen + (r.removed ? ' · removed' : retired(r) ? ' · retired' : '') + '</div>' +
+      star + '</div>' +
+      '<div class="card-meta">Gen ' + r.gen + (retired(r) ? ' · retired' : '') + '</div>' +
       goalBadge(r) + (act && act.act === 'pick' ? relHTML(w, r) : '') +
       stat + chipsHTML(r.id) + mistake + flag +
       '</div>';
@@ -776,18 +813,25 @@
       // A folded generation still hints at what's inside.
       const sel = ui.selected && flock.get(ui.selected);
       const kin = sel ? members.filter(r => r.id === sel.sire || r.id === sel.dam).map(r => (r.id === sel.sire ? 'Sire' : 'Dam')) : [];
-      const w = waiting();
+      const w = !ui.selecting && waiting();
       const picks = w ? members.filter(r => (penAction(r) || {}).act === 'pick').length : 0;
+      const ticked = ui.selecting ? members.filter(r => ui.chosen.has(r.id)).length : 0;
       const stars = members.filter(r => isStarred(r.id)).length;
       extra = '<span class="gen-peek">' + members.slice(0, 18).map(r => D.swatch(r.phenotype, 'xs')).join('') +
         (members.length > 18 ? '<span class="faint">+' + (members.length - 18) + '</span>' : '') + '</span>' +
         kin.map(k => '<span class="kin-tag inline">' + k + '</span>').join('') +
         (stars ? '<span class="gen-stars" title="' + stars + ' starred">★ ' + stars + '</span>' : '') +
-        (picks ? '<span class="gen-picks">' + picks + ' to pick</span>' : '');
+        (picks ? '<span class="gen-picks">' + picks + ' to pick</span>' : '') +
+        (ticked ? '<span class="gen-picks">' + ticked + ' selected</span>' : '');
     }
-    return '<button class="gen-head" data-gen="' + gen + '" data-fk="gen-' + gen + '" aria-expanded="' + open + '">' +
+    const head = '<button class="gen-head" data-gen="' + gen + '" data-fk="gen-' + gen + '" aria-expanded="' + open + '">' +
       '<span class="chev" aria-hidden="true">▸</span><span class="gen-title">Generation ' + gen + '</span>' +
       '<span class="faint">' + members.length + ' sheep</span>' + extra + '</button>';
+    if (!ui.selecting) return head;
+    // In select mode, a whole generation can be ticked at once, open or folded.
+    const all = members.every(r => ui.chosen.has(r.id));
+    return '<div class="gen-row">' + head + '<button class="btn btn-small gen-choose" data-choose-gen="' + gen + '" data-fk="choose-gen-' + gen + '">' +
+      (all ? 'Unselect ' + (members.length === 1 ? 'it' : 'all ' + members.length) : 'Select ' + (members.length === 1 ? 'it' : 'all ' + members.length)) + '</button></div>';
   }
 
   function gridHTML(list) {
@@ -802,29 +846,112 @@
     }).join('');
   }
 
-  function countText(list) {
+  // The breeding flock's diversity, from the pedigree. Its explanation opens
+  // on click too, for touch screens.
+  function diversityHTML() {
+    const d = flock.diversity();
+    if (d === null) return '';
+    const tip = 'How varied the breeding flock\'s genes are, from the pedigree. 100% means no two sheep that can breed share an ancestor. ' +
+      'At ' + pct(d) + ', a lamb of two of them picked at random would be ' + pct(1 - d) + ' inbred, on average. It falls as more of the ' +
+      'flock descends from the same few sheep. Adding random sheep raises it, and so does retiring sheep whose genes are already common.';
+    return ' · <button type="button" class="diversity" data-tip-toggle title="' + esc(tip) + '">diversity ' + pct(d) + '</button>';
+  }
+
+  function countHTML(list) {
     const all = flock.list();
     const rams = all.filter(r => r.sex === 'ram').length;
     const hidden = all.filter(hiddenRetired).length;
     const room = flock.room();
-    return all.length + ' sheep · ' + plural(rams, 'ram') + ', ' + plural(all.length - rams, 'ewe') +
+    return all.length + ' sheep · ' + plural(rams, 'ram') + ', ' + plural(all.length - rams, 'ewe') + diversityHTML() +
       (room <= 0 ? ' · flock full (' + all.filter(r => !retired(r)).length + ' can breed)' : room <= 10 ? ' · room for ' + room + ' more' : '') +
       (hidden ? ' · ' + hidden + ' retired hidden' : '') +
-      (list.length !== all.length - hidden || ui.showRemoved ? ' · showing ' + list.length : '');
+      (list.length !== all.length - hidden ? ' · showing ' + list.length : '');
   }
 
   function renderGrid() {
     for (const [id, t] of fresh) if (Date.now() - t >= FRESH_MS) fresh.delete(id);
     const list = visibleSheep();
-    $('flock-count').textContent = countText(list);
+    // Only sheep the filters show stay ticked.
+    const shown = new Set(list.map(r => r.id));
+    for (const id of ui.chosen) if (!shown.has(id)) ui.chosen.delete(id);
+    $('flock-count').innerHTML = countHTML(list);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
     pickBanner();
     renderGoalLine();
     $('grid').innerHTML = gridHTML(list);
-    if (focused && (focused.startsWith('card-') || focused.startsWith('gen-'))) {
-      const el = $('grid').querySelector('[data-fk="' + focused + '"]');
+    $('grid').classList.toggle('selecting', ui.selecting);
+    renderSelectBar(list);
+    if (focused && (focused.startsWith('card-') || focused.startsWith('gen-') || focused.startsWith('choose-gen-') || focused.startsWith('bulk-'))) {
+      const el = document.querySelector('#grid [data-fk="' + focused + '"], #select-bar [data-fk="' + focused + '"]');
       if (el) el.focus({ preventScroll: true });
     }
+  }
+
+  // ------------------------------------------------------- select mode
+
+  // The ticked sheep, split by what each bulk action would do to them.
+  function bulkGroups() {
+    const list = [...ui.chosen].map(id => flock.get(id)).filter(Boolean);
+    return {
+      list,
+      retire: list.filter(r => !retired(r)),
+      // Sheep retired early; one that used all its breedings has nothing to return to.
+      unretire: list.filter(r => r.retired && couldBreed(r)),
+    };
+  }
+
+  function renderSelectBar(list) {
+    const el = $('select-bar');
+    el.hidden = !ui.selecting;
+    if (!ui.selecting) return;
+    const g = bulkGroups();
+    const n = g.list.length;
+    const allShown = list.length && list.every(r => ui.chosen.has(r.id));
+    const btn = (act, label, title, cls) => '<button class="btn btn-small' + (cls || '') + '" data-act="' + act + '" data-fk="bulk-' + act + '"' +
+      (title ? ' title="' + esc(title) + '"' : '') + '>' + label + '</button>';
+    el.innerHTML = '<span class="sel-count">' + (n ? '<b>' + n + '</b> selected' : 'Click sheep to select them. Shift-click selects a run.') + '</span>' +
+      '<span class="sel-tools">' +
+      (list.length && !allShown ? btn('choose-all', 'Select all ' + list.length, 'Select every sheep the filters show') : '') +
+      (n ? btn('choose-none', 'Clear') : '') + '</span>' +
+      '<span class="sel-acts">' +
+      (g.retire.length ? btn('bulk-retire', 'Retire ' + g.retire.length, RETIRE_TIP) : '') +
+      (g.unretire.length ? btn('bulk-unretire', 'Return ' + g.unretire.length + ' to breeding') : '') +
+      btn('select-mode', 'Done', '', ' btn-primary') + '</span>';
+  }
+
+  function setSelecting(on) {
+    const fromBar = !on && $('select-bar').contains(document.activeElement);
+    ui.selecting = on;
+    ui.chosen.clear();
+    ui.lastChosen = null;
+    refresh();
+    if (fromBar) $('select-btn').focus();
+  }
+
+  // Tick or untick a card. Shift-click ticks every card between it and the last one clicked.
+  function toggleChosen(id, run) {
+    const order = [...$('grid').querySelectorAll('.card[data-id]')].map(el => el.dataset.id);
+    const from = order.indexOf(ui.lastChosen);
+    const to = order.indexOf(id);
+    if (run && from >= 0 && to >= 0) {
+      for (const x of order.slice(Math.min(from, to), Math.max(from, to) + 1)) ui.chosen.add(x);
+    } else if (ui.chosen.has(id)) ui.chosen.delete(id);
+    else ui.chosen.add(id);
+    ui.lastChosen = id;
+    renderGrid();
+  }
+
+  function chooseGen(gen) {
+    const members = visibleSheep().filter(r => String(r.gen) === gen);
+    const all = members.every(r => ui.chosen.has(r.id));
+    for (const r of members) all ? ui.chosen.delete(r.id) : ui.chosen.add(r.id);
+    renderGrid();
+  }
+
+  function chooseAll(on) {
+    if (on) for (const r of visibleSheep()) ui.chosen.add(r.id);
+    else ui.chosen.clear();
+    renderGrid();
   }
 
   function renderToolbar() {
@@ -833,9 +960,9 @@
     $('sort-select').value = ui.sort;
     $('sort-dir').textContent = ui.dir === 1 ? '↑' : '↓';
     $('sort-dir').title = ui.dir === 1 ? 'Ascending' : 'Descending';
-    $('show-removed').checked = ui.showRemoved;
     $('show-retired').checked = ui.showRetired;
     $('star-filter').setAttribute('aria-pressed', String(ui.starredOnly));
+    $('select-btn').setAttribute('aria-pressed', String(ui.selecting));
     const full = flock.room() <= 0;
     $('add-btn').disabled = full;
     $('add-btn').title = full ? fullText() : 'Add a new founder with random genes';
@@ -843,7 +970,7 @@
     const undo = $('undo-btn');
     undo.disabled = !last;
     undo.title = last ? 'Remove the litter of ' + nameOf(last.sire) + ' × ' + nameOf(last.dam) : 'Nothing to undo';
-    const anySure = flock.list({ includeRemoved: true }).some(r => sureOf(r.id).count > 0);
+    const anySure = flock.list().some(r => sureOf(r.id).count > 0);
     $('check-all-btn').disabled = !anySure;
     $('check-all-btn').title = anySure ? 'Flag any guess marked sure that is wrong, on every sheep' : 'Mark a guess as sure first';
   }
@@ -878,6 +1005,7 @@
   function breedingsText(r) {
     const left = flock.breedingsLeft(r.id);
     const limit = E.BREEDING_LIMIT[r.sex];
+    if (r.retired && couldBreed(r)) return 'Retired early, with ' + (limit - r.litters.length) + ' of ' + limit + ' unused';
     return left ? left + ' of ' + limit + ' left' : 'All ' + limit + ' used. Retired from breeding';
   }
 
@@ -986,14 +1114,32 @@
     const r = id && flock.get(id);
     if (!r) return '<div class="ped-node unknown"><span class="ped-role">' + role + '</span><span class="faint">unknown</span></div>';
     return '<button class="ped-node" data-open="' + r.id + '"><span class="ped-role">' + role + '</span>' +
-      D.swatch(r.phenotype, 'sm') + '<span class="ped-name">' + esc(r.name) + '</span>' +
-      (r.removed ? '<span class="tag">removed</span>' : '') + '</button>';
+      D.swatch(r.phenotype, 'sm') + '<span class="ped-name">' + esc(r.name) + '</span></button>';
   }
 
   function inbreedingNote(F) {
     return F < 0.0625 ? 'distant relatives; a slight hit to fleece and litter size'
       : F < 0.2 ? 'related parents; fleece and litter size take a small hit'
       : 'closely related parents; fleece and litter size take a noticeable hit';
+  }
+
+  function flockKinTip(r) {
+    return r.name + '\'s average relatedness to the sheep that can still breed. Retired sheep don\'t count.';
+  }
+
+  // How related a sheep is to the breeding flock, next to how it compares.
+  function flockKinHTML(r) {
+    const v = flock.relatednessToFlock(r.id);
+    if (v === null) return '';
+    const others = flock.list().filter(x => !retired(x) && x.id !== r.id).map(x => flock.relatednessToFlock(x.id));
+    const more = others.filter(x => x > v + 0.005).length;
+    const less = others.filter(x => x < v - 0.005).length;
+    const note = v === 0 ? 'no relatives among the sheep that can breed'
+      : more >= 0.6 * others.length ? 'less than most, so its genes are rarer in the flock'
+      : less >= 0.6 * others.length ? (v < 0.125 ? 'more than most, though still low' : 'more than most; its genes are already common')
+      : 'about average for the flock';
+    return '<div class="inbreeding flock-kin" title="' + esc(flockKinTip(r)) + '"><span class="tip-label">Related to flock</span> <strong>' + pct(v) + '</strong> ' +
+      '<span class="muted">· ' + note + '</span></div>';
   }
 
   function pedigreeHTML(r) {
@@ -1015,7 +1161,8 @@
     const F = r.inbreeding || 0;
     const note = !r.sire ? 'founder' : F === 0 ? 'parents are unrelated, as far as the pedigree shows' : inbreedingNote(F);
     return '<section class="sp-sec"><h3>Pedigree</h3>' + tree +
-      '<div class="inbreeding">Inbreeding <strong>' + pct(F) + '</strong> <span class="muted">· ' + note + '</span></div></section>';
+      '<div class="inbreeding">Inbreeding <strong>' + pct(F) + '</strong> <span class="muted">· ' + note + '</span></div>' +
+      flockKinHTML(r) + '</section>';
   }
 
   function lambsHTML(r) {
@@ -1045,7 +1192,8 @@
       '<li><b>Click a sheep</b> to see its color, horns and fleece, and to write down your guesses about its genes.</li>' +
       '<li><b>Click Breed</b> on a sheep, then pick a mate of the other sex.</li>' +
       '<li><b>Breed them</b> and compare the lambs with what your notes predicted. A lamb that doesn\'t fit your guesses gets a surprise flag.</li>' +
-      '<li><b>Plan your crosses.</b> A ram can be bred ' + E.BREEDING_LIMIT.ram + ' times and a ewe ' + E.BREEDING_LIMIT.ewe + ', then they retire.</li>' +
+      '<li><b>Plan your crosses.</b> A ram can be bred ' + E.BREEDING_LIMIT.ram + ' times and a ewe ' + E.BREEDING_LIMIT.ewe + ', then they retire. ' +
+        'The flock holds ' + E.MAX_FLOCK_SIZE + ' sheep that can still breed, so retire the ones you\'re done with. <b>Select</b> retires several at once.</li>' +
       '</ol>' +
       '<p class="muted">New to sheep genetics? The <button class="link" data-view="guide">Genetics guide</button> explains how it all works.</p>' +
       (flock.fantasy
@@ -1059,8 +1207,8 @@
 
   // A flock nobody has bred, added to or written notes on yet can be swapped without asking.
   function untouched() {
-    const all = flock.list({ includeRemoved: true });
-    return !flock.canUndo() && all.length <= 8 && all.every(r => !r.sire && !r.litters.length && !r.removed) &&
+    const all = flock.list();
+    return !flock.canUndo() && all.length <= 8 && all.every(r => !r.sire && !r.litters.length && !r.retired) &&
       all.every(r => !notes[r.id] || (!notes[r.id].text && !genesOn().some(g => hasGuesses(r.id, [g.key]))));
   }
 
@@ -1076,7 +1224,7 @@
   const INVITE_AFTER_LITTERS = 6;
   function penInvite() {
     if (flock.fantasy || ui.hideInvite) return '';
-    const litters = flock.list({ includeRemoved: true }).filter(r => r.sex === 'ewe').reduce((a, r) => a + r.litters.length, 0);
+    const litters = flock.list().filter(r => r.sex === 'ewe').reduce((a, r) => a + r.litters.length, 0);
     return litters >= INVITE_AFTER_LITTERS ? fantasyInvite('Getting the hang of it?', true) : '';
   }
 
@@ -1103,9 +1251,12 @@
     $('new-dialog').showModal();
   }
 
+  const RETIRE_TIP = 'Stop breeding. Retired sheep stay in the flock and its pedigrees, take no space, and are hidden unless Show retired is ticked.';
+
   // The side panel's breed button says what it will do with this sheep.
   function panelPenButton(r) {
     if (ui.pen[r.sex] === r.id) return penButton(r, { act: 'out', title: 'Take ' + r.name + ' out of the breeding pen' }, 'btn btn-small', 'Take out of pen');
+    if (r.retired && couldBreed(r)) return '<button class="btn btn-small" data-act="unretire" title="Let ' + esc(r.name) + ' breed again">Return to breeding</button>';
     if (retired(r)) return '<button class="btn btn-small" disabled title="' + esc(retiredText(r)) + '">Retired from breeding</button>';
     const w = waiting();
     if (w && w.sex !== r.sex) return penButton(r, { act: 'pick', title: 'Breed ' + r.name + ' with ' + w.name }, 'btn btn-small btn-primary', 'Breed with ' + w.name);
@@ -1138,15 +1289,12 @@
       ? '<input class="rename-input" id="rename-input" data-fk="rename" value="' + esc(r.name) + '" maxlength="40" aria-label="New name">' +
         '<button class="btn btn-small" data-act="rename-save">Save</button>'
       : '<h2>' + esc(r.name) + ' <span class="sex-big">' + d.sexIcon + '</span></h2>';
-    const actions = r.removed
-      ? '<button class="btn btn-small" data-act="restore">Return to flock</button>'
-      : starButton(r, 'btn btn-small star-btn', on => (on ? 'Starred' : 'Star')) +
-        '<button class="btn btn-small" data-act="rename">Rename</button>' +
-        panelPenButton(r) +
-        '<button class="btn btn-small btn-danger' + (ui.removeArmed ? ' armed' : '') + '" data-act="remove">' + (ui.removeArmed ? 'Click again to remove' : 'Remove from flock') + '</button>';
+    const actions = starButton(r, 'btn btn-small star-btn', on => (on ? 'Starred' : 'Star')) +
+      '<button class="btn btn-small" data-act="rename">Rename</button>' +
+      panelPenButton(r) +
+      (retired(r) ? '' : '<button class="btn btn-small" data-act="retire" title="' + esc(RETIRE_TIP) + '">Retire</button>');
     return '<div class="sp-head">' + D.swatch(r.phenotype, 'xl') +
       '<div class="sp-title">' + title + '<div class="muted">' + d.sex + ' · Generation ' + r.gen + ' · ' + parents + '</div></div></div>' +
-      (r.removed ? '<div class="banner">Removed from the flock. Kept for pedigrees.</div>' : '') +
       '<div class="sp-actions">' + actions + '</div>' +
       '<section class="sp-sec"><h3>What you can see</h3><dl class="traits">' +
       '<dt>Color</dt><dd>' + d.color + '</dd>' +
@@ -1484,7 +1632,7 @@
   }
 
   function select(id) {
-    if (ui.selected !== id) { ui.suggest = false; ui.renaming = false; ui.removeArmed = false; }
+    if (ui.selected !== id) { ui.suggest = false; ui.renaming = false; }
     ui.selected = id;
     ui.side = 'sheep';
     showGen(flock.get(id));
@@ -1494,7 +1642,7 @@
 
   function putInPen(id) {
     const r = flock.get(id);
-    if (!r || r.removed) return;
+    if (!r) return;
     if (retired(r)) { toast(retiredText(r)); return; }
     ui.pen[r.sex] = id;
     ui.side = 'breed';
@@ -1563,23 +1711,37 @@
     toast(r.name + ' joins the flock.');
   }
 
-  let removeTimer = null;
-  function removeSelected() {
-    const r = ui.selected && flock.get(ui.selected);
-    if (!r) return;
-    if (!ui.removeArmed) {
-      ui.removeArmed = true;
-      renderSide();
-      clearTimeout(removeTimer);
-      removeTimer = setTimeout(() => { ui.removeArmed = false; renderSide(); }, 3000);
-      return;
+  // ------------------------------------------------------- retiring
+  //
+  // For one sheep from its panel, or for several in select mode. Retired
+  // sheep stay in the records, so retiring is the only way out of the flock.
+
+  const sheepWords = list => (list.length <= 3 ? listWords(list.map(r => r.name)) : list.length + ' sheep');
+  const are = list => (list.length === 1 ? ' is' : ' are');
+
+  function retireSheep(list) {
+    if (!list.length) return;
+    for (const r of list) {
+      flock.retire(r.id);
+      if (ui.pen[r.sex] === r.id) ui.pen[r.sex] = null;
     }
-    clearTimeout(removeTimer);
-    ui.removeArmed = false;
-    flock.remove(r.id);
-    if (ui.pen[r.sex] === r.id) ui.pen[r.sex] = null;
+    ui.chosen.clear();
     refresh();
-    toast(r.name + ' left the flock. Tick Show removed to find them again.');
+    // Starred sheep, and the one open in the panel, stay in view.
+    const hidden = list.filter(hiddenRetired).length;
+    toast(sheepWords(list) + are(list) + ' retired from breeding' +
+      (!hidden ? '.' : hidden === list.length ? ', and hidden unless Show retired is ticked.' : '. ' + (hidden === 1 ? 'One of them is' : hidden + ' of them are') + ' hidden unless Show retired is ticked.'),
+      { label: 'Undo', run: () => unretireSheep(list) });
+  }
+
+  // Back to breeding, if the flock has room for all of them.
+  function unretireSheep(list) {
+    const need = list.filter(couldBreed).length;
+    if (need > Math.max(0, flock.room())) { toast(noRoomText(need)); return; }
+    for (const r of list) flock.unretire(r.id);
+    ui.chosen.clear();
+    refresh();
+    toast(sheepWords(list) + are(list) + ' back to breeding.');
   }
 
   function finishRename() {
@@ -1625,7 +1787,12 @@
       else window.scrollTo(0, 0);
       return;
     }
-    if (t.closest('#toast')) { hideToast(); return; }
+    if (t.closest('#toast')) {
+      const run = t.closest('.toast-action') ? toastAction : null;
+      hideToast();
+      if (run) run();
+      return;
+    }
 
     const side = t.closest('[data-side]');
     if (side) { ui.side = side.dataset.side; renderSide(); save(); return; }
@@ -1684,6 +1851,9 @@
     const sex = t.closest('[data-sex]');
     if (sex) { ui.sex = sex.dataset.sex; refresh(); return; }
 
+    const chooseG = t.closest('[data-choose-gen]');
+    if (chooseG) { chooseGen(chooseG.dataset.chooseGen); return; }
+
     const gen = t.closest('[data-gen]');
     if (gen) {
       ui.genOpen[gen.dataset.gen] = gen.getAttribute('aria-expanded') !== 'true';
@@ -1701,8 +1871,13 @@
         case 'add': addRandom(); break;
         case 'rename': ui.renaming = true; renderSide(); break;
         case 'rename-save': finishRename(); break;
-        case 'remove': removeSelected(); break;
-        case 'restore': flock.restore(ui.selected); refresh(); break;
+        case 'retire': retireSheep([flock.get(ui.selected)]); break;
+        case 'unretire': unretireSheep([flock.get(ui.selected)]); break;
+        case 'select-mode': setSelecting(!ui.selecting); break;
+        case 'choose-all': chooseAll(true); break;
+        case 'choose-none': chooseAll(false); break;
+        case 'bulk-retire': retireSheep(bulkGroups().retire); break;
+        case 'bulk-unretire': unretireSheep(bulkGroups().unretire); break;
         case 'suggest': ui.suggest = !ui.suggest; renderSide(); break;
         case 'fantasy-notes': ui.fantasyNotes = !ui.fantasyNotes; renderSide(); save(); break;
         case 'check-one': if (ui.selected) { runCheck(ui.selected); refresh(); } break;
@@ -1726,7 +1901,10 @@
     }
 
     const card = t.closest('.card[data-id]');
-    if (card) select(card.dataset.id);
+    if (card) {
+      if (ui.selecting) toggleChosen(card.dataset.id, e.shiftKey);
+      else select(card.dataset.id);
+    }
   }
 
   function onChange(e) {
@@ -1743,7 +1921,6 @@
     if (t.matches('.slot-select')) { setSlot(t.dataset.gene, +t.dataset.slot, t.value); return; }
     if (t.id === 'allele-filter') { ui.allele = t.value; refresh(); return; }
     if (t.id === 'sort-select') { ui.sort = t.value; ui.dir = 1; refresh(); return; }
-    if (t.id === 'show-removed') { ui.showRemoved = t.checked; refresh(); return; }
     if (t.id === 'show-retired') { ui.showRetired = t.checked; refresh(); return; }
     if (t.id === 'import-file' && t.files && t.files[0]) { importFlock(t.files[0]); t.value = ''; }
   }
@@ -1768,6 +1945,10 @@
       document.querySelector('[data-act="file-menu"]').focus();
       return;
     }
+    if (e.key === 'Escape' && ui.selecting && !t.closest('input, textarea, select, dialog')) {
+      setSelecting(false);
+      return;
+    }
     if (e.key === 'Escape' && waiting() && !t.closest('input, textarea, select, dialog')) {
       ui.pen = { ram: null, ewe: null };
       refresh();
@@ -1780,7 +1961,8 @@
     }
     if ((e.key === 'Enter' || e.key === ' ') && t.matches('.card[data-id]')) {
       e.preventDefault();
-      select(t.dataset.id);
+      if (ui.selecting) toggleChosen(t.dataset.id, e.shiftKey);
+      else select(t.dataset.id);
     }
   }
 
@@ -1798,13 +1980,14 @@
   function buildControls() {
     $('sort-select').innerHTML =
       '<option value="born">Oldest first</option><option value="name">Name</option><option value="gen">Generation</option>' +
+      '<option value="kin">Related to flock</option>' +
       '<optgroup label="Fleece">' + E.TRAITS.map(t => '<option value="' + t.key + '">' + t.name + '</option>').join('') + '</optgroup>';
   }
 
   function init() {
     buildControls();
     if (!loadSaved()) starterFlock();
-    if (!E.TRAIT[ui.sort] && !['born', 'name', 'gen'].includes(ui.sort)) ui.sort = 'born';
+    if (!E.TRAIT[ui.sort] && !['born', 'name', 'gen', 'kin'].includes(ui.sort)) ui.sort = 'born';
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
     document.addEventListener('input', onInput);
