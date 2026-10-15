@@ -1,9 +1,9 @@
-/* Sheep Genetics Sandbox: flock history.
+/* Who Are Ewe? Flock history.
  *
- * How the flock has changed: every sheep in the order it joined the flock,
- * fleece generation by generation, and the breeding flock's diversity and
- * each litter's inbreeding, litter by litter. It reads only what the player
- * can see anyway: looks, measured fleece, pedigrees and litters.
+ * How the flock has changed, litter by litter: every sheep in the order it
+ * joined the flock, the fleece of the breeding flock, its diversity, and
+ * each litter's inbreeding. It reads only what the player can see anyway:
+ * looks, measured fleece, pedigrees and litters.
  */
 (function () {
   'use strict';
@@ -37,12 +37,19 @@
 
   function collect() {
     const sheep = flock.list();
-    const gens = [];
-    for (const r of sheep) (gens[r.gen] = gens[r.gen] || []).push(r);
-    for (let g = 0; g < gens.length; g++) gens[g] = gens[g] || [];
     const history = flock.diversityHistory();
     const litters = history.filter(p => p.kind === 'litter');
-    return { sheep, gens, history, litters, record: birthRecord(sheep, litters) };
+    const record = birthRecord(sheep, litters);
+    // Where each sheep sits on the litter axis, and how to say it.
+    const at = new Map();
+    const where = new Map();
+    for (const e of record.entries) {
+      for (const r of e.sheep) {
+        at.set(r.id, e.kind === 'start' ? 0 : e.kind === 'added' ? e.after + 0.5 : e.litter.litter);
+        where.set(r.id, e.kind === 'start' ? 'founder' : e.kind === 'added' ? 'added after litter ' + e.after : 'litter ' + e.litter.litter);
+      }
+    }
+    return { sheep, history, litters, record, at, where };
   }
 
   // Every sheep in the order it joined the flock: the starting founders,
@@ -80,9 +87,13 @@
   const pairText = p => esc(nameOf(p.sire)) + ' × ' + esc(nameOf(p.dam));
   const retired = r => flock.breedingsLeft(r.id) === 0;
 
-  function genAverages(valueOf) {
-    return data.gens.map((list, g) => (list.length ? { g, v: mean(list.map(valueOf)), n: list.length } : null)).filter(Boolean);
+  // The breeding flock's average at the start, after each litter, and now.
+  function fleeceAverages(t) {
+    return data.history.map((p, i) => (p.ids.length
+      ? { i, p, v: mean(p.ids.map(id => flock.get(id).phenotype.fleece[t.key])), n: p.ids.length } : null)).filter(Boolean);
   }
+
+  const pointName = p => (p.kind === 'start' ? 'Start' : p.kind === 'now' ? 'Now' : 'After litter ' + p.litter);
 
   // ---------------------------------------------------------- scales
 
@@ -118,6 +129,18 @@
   const line = (cls, x1, y1, x2, y2) => '<line class="' + cls + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
   const text = (cls, x, y, anchor, body) => '<text class="' + cls + '" x="' + x + '" y="' + y + '" text-anchor="' + anchor + '">' + body + '</text>';
   const pathOf = pts => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+
+  // Litter numbers along the bottom, between "start" and "now", then the axis title.
+  function litterAxis(px, N, W, m, y) {
+    const L = data.litters.length;
+    const room = Math.max(1, Math.floor((W - m.l - m.r) / 34) - 2);
+    const step = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find(s => L / s <= room) || 1000;
+    let svg = text('hc-tick', px(0), y, 'middle', 'start') + text('hc-tick', px(N - 1), y, 'middle', 'now');
+    for (let k = step; k <= L; k += step) {
+      if (px(k) - px(0) > 30 && px(N - 1) - px(k) > 26) svg += text('hc-tick', px(k), y, 'middle', k);
+    }
+    return svg + text('hc-tick', (m.l + W - m.r) / 2, y + 18, 'middle', 'Litter');
+  }
 
   // Horizontal gridlines with their labels on the left.
   function yAxis(ticks, py, x0, x1, label) {
@@ -177,72 +200,82 @@
 
   // ---------------------------------------------------- fleece charts
 
+  // Each sheep's fleece at the litter it was born in, and a line for the
+  // average of the sheep that could breed after each litter.
   function drawFleece(wrap, t) {
     const W = wrap.clientWidth;
     const H = 210;
-    const m = { l: 40, r: 40, t: 10, b: 38 };
-    const G = data.gens.length;
-    const bw = (W - m.l - m.r) / G;
-    const cx = g => m.l + bw * (g + 0.5);
+    const m = { l: 40, r: 44, t: 10, b: 38 };
+    const N = data.history.length;
+    const px = i => m.l + i / (N - 1) * (W - m.l - m.r);
     const value = r => r.phenotype.fleece[t.key];
     const { lo, hi, step } = niceRange(Math.min(...data.sheep.map(value)), Math.max(...data.sheep.map(value)), 4);
     const py = v => H - m.b - (v - lo) / (hi - lo) * (H - m.t - m.b);
-    const spread = Math.min(bw * 0.3, 24);
-    const dots = data.sheep.map((r, i) => ({ i, id: r.id, r, v: value(r), x: cx(r.gen) + jitter(r.id) * spread, y: py(value(r)) }));
-    const avgs = genAverages(value).map((a, i) => Object.assign(a, { i, x: cx(a.g), y: py(a.v) }));
+    const spread = Math.min((W - m.l - m.r) / (N - 1) * 0.3, 8);
+    const dots = data.sheep.map((r, i) => ({ i, id: r.id, r, v: value(r), x: px(data.at.get(r.id)) + jitter(r.id) * spread, y: py(value(r)) }));
+    const avgs = fleeceAverages(t).map(a => Object.assign(a, { x: px(a.i), y: py(a.v) }));
+    const avgAt = new Map(avgs.map(a => [a.i, a]));
 
-    // Generation labels, thinned out when there are too many to fit.
-    const every = Math.max(1, Math.ceil(G / Math.max(1, Math.floor((W - m.l - m.r) / 26))));
     let svg = yAxis(tickValues(lo, hi, step), py, m.l, W - m.r, v => +v.toFixed(step < 1 ? 1 : 0)) +
-      line('hc-axis', m.l, H - m.b, W - m.r, H - m.b);
-    for (let g = 0; g < G; g += every) svg += text('hc-tick', cx(g), H - m.b + 16, 'middle', g);
-    svg += text('hc-tick', (m.l + W - m.r) / 2, H - 4, 'middle', 'Generation');
+      line('hc-axis', m.l, H - m.b, W - m.r, H - m.b) + litterAxis(px, N, W, m, H - m.b + 16);
     svg += dots.map((d, i) => '<circle class="hc-dot" data-i="' + i + '" cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="3.5"/>').join('');
     svg += '<path class="hc-line" d="' + pathOf(avgs.map(a => [a.x, a.y])) + '"/>';
-    svg += avgs.map((a, i) => '<circle class="hc-avg" data-a="' + i + '" cx="' + a.x + '" cy="' + a.y.toFixed(1) + '" r="4.5"/>').join('');
     const last = avgs[avgs.length - 1];
-    svg += text('hc-end', last.x + 9, last.y + 4, 'start', one(last.v));
+    if (last && last.p.kind === 'now') {
+      svg += '<circle class="hc-avg" cx="' + last.x + '" cy="' + last.y.toFixed(1) + '" r="4.5"/>' + text('hc-end', last.x + 9, last.y + 4, 'start', one(last.v));
+    }
+    svg += '<g class="hc-hover" hidden>' + line('hc-cross', 0, m.t, 0, H - m.b) + '<circle class="hc-ring" r="5"/></g>';
 
     const el = wrap.querySelector('svg');
     el.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     el.setAttribute('height', H);
     el.innerHTML = svg;
-    el.setAttribute('aria-label', t.name + ' by generation. ' + fleeceNote(t, avgs));
+    el.setAttribute('aria-label', t.name + ', litter by litter. ' + fleeceNote(t, avgs));
 
+    // A dot right under the pointer wins; anywhere else shows the average there.
     const find = (x, y) => {
       let best = null;
-      let bestD = 16 * 16;
-      for (const a of avgs) {
-        const d = (a.x - x) ** 2 + (a.y - y) ** 2 - 30;
-        if (d < bestD) { bestD = d; best = a; }
-      }
+      let bestD = 10 * 10;
       for (const d of dots) {
         const dd = (d.x - x) ** 2 + (d.y - y) ** 2;
         if (dd < bestD) { bestD = dd; best = d; }
       }
-      return best && Object.assign({ tipY: best.y }, best);
+      if (best) return Object.assign({ tipY: best.y }, best);
+      const a = avgAt.get(Math.max(0, Math.min(N - 1, Math.round((x - m.l) / (W - m.l - m.r) * (N - 1)))));
+      return a ? Object.assign({ tipY: a.y }, a) : null;
     };
     const html = h => (h.r
       ? '<b>' + one(h.v) + ' ' + esc(t.unit) + '</b><br>' + D.swatch(h.r.phenotype, 'xs') + ' ' + esc(h.r.name) + ' ' + D.sexIcon(h.r.sex) +
-        ' <span>· gen ' + h.r.gen + (retired(h.r) ? ' · retired' : '') + '</span>'
-      : '<b>' + one(h.v) + ' ' + esc(t.unit) + '</b> average<br><span>' + (h.g ? 'Generation ' + h.g : 'Founders') + ' · ' + h.n + ' sheep</span>');
+        ' <span>· ' + data.where.get(h.r.id) + (retired(h.r) ? ' · retired' : '') + '</span>'
+      : '<b>' + one(h.v) + ' ' + esc(t.unit) + '</b> average<br><span>' + pointName(h.p) + ' · ' + breeding(h.n) + '</span>');
+    const hover = el.querySelector('.hc-hover');
     const place = (h, on) => {
-      const mark = el.querySelector(h.r ? '[data-i="' + h.i + '"]' : '[data-a="' + h.i + '"]');
-      if (!mark) return;
-      mark.classList.toggle('on', on);
-      if (h.r) mark.setAttribute('r', on ? 5 : 3.5);
+      if (h.r) {
+        const mark = el.querySelector('[data-i="' + h.i + '"]');
+        if (mark) { mark.classList.toggle('on', on); mark.setAttribute('r', on ? 5 : 3.5); }
+        return;
+      }
+      hover.toggleAttribute('hidden', !on);
+      if (!on) return;
+      const cross = hover.querySelector('.hc-cross');
+      cross.setAttribute('x1', h.x);
+      cross.setAttribute('x2', h.x);
+      const ring = hover.querySelector('.hc-ring');
+      ring.setAttribute('cx', h.x);
+      ring.setAttribute('cy', h.y);
     };
     hookTip(wrap, find, html, place, openSheep);
   }
 
   function fleeceNote(t, avgs) {
-    if (avgs.length < 2) return 'Only founders so far.';
     const first = avgs[0];
     const last = avgs[avgs.length - 1];
+    if (!last || last.p.kind !== 'now') return 'No sheep can breed right now.';
+    if (first === last) return 'No litters yet.';
     const d = last.v - first.v;
     const [better, worse] = WORDS[t.key];
     const word = Math.abs(d) < 0.1 * t.sd ? 'about the same as' : (d * t.worseDir < 0 ? better : worse) + ' than';
-    return 'Generation ' + last.g + ' averages ' + one(last.v) + ' ' + t.unit + ', ' + word + ' the founders\' ' + one(first.v) + '.';
+    return 'Your breeding sheep average ' + one(last.v) + ' ' + t.unit + ' now, ' + word + ' the founders\' ' + one(first.v) + '.';
   }
 
   // ------------------------------------------------ the litter chart
@@ -274,15 +307,7 @@
       yAxis(tickValues(0, f.hi, f.step), fy, m.l, W - m.r, pctTick(f.step)) +
       line('hc-axis', m.l, bot[1], W - m.r, bot[1]);
 
-    // Litter numbers along the bottom, between "start" and "now".
-    const L = data.litters.length;
-    const room = Math.max(1, Math.floor((W - m.l - m.r) / 34) - 2);
-    const step = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find(s => L / s <= room) || 1000;
-    svg += text('hc-tick', px(0), bot[1] + 16, 'middle', 'start') + text('hc-tick', px(N - 1), bot[1] + 16, 'middle', 'now');
-    for (let k = step; k <= L; k += step) {
-      if (px(k) - px(0) > 30 && px(N - 1) - px(k) > 26) svg += text('hc-tick', px(k), bot[1] + 16, 'middle', k);
-    }
-    svg += text('hc-tick', (m.l + W - m.r) / 2, H - 4, 'middle', 'Litter');
+    svg += litterAxis(px, N, W, m, bot[1] + 16);
 
     const run = pts.map((p, i) => (p.value === null ? null : [px(i), dy(p.value)])).filter(Boolean);
     svg += '<path class="hc-line" d="' + pathOf(run) + '"/>';
@@ -390,12 +415,13 @@
 
   // ------------------------------------------------------------ tables
 
+  // The breeding flock's average fleece at the start, after each litter, and now.
   function fleeceTable() {
-    return '<table class="data"><thead><tr><th>Generation</th><th>Sheep</th>' +
-      E.TRAITS.map(t => '<th>' + t.name + ' <span class="muted">' + esc(t.unit) + '</span></th>').join('') + '<th>Inbreeding</th></tr></thead><tbody>' +
-      data.gens.map((list, g) => (list.length ? '<tr><th>' + (g ? g : '0 (founders)') + '</th><td>' + list.length + '</td>' +
-        E.TRAITS.map(t => '<td>' + one(mean(list.map(r => r.phenotype.fleece[t.key]))) + '</td>').join('') +
-        '<td>' + pct(mean(list.map(r => r.inbreeding || 0))) + '</td></tr>' : '')).join('') +
+    const avg = (p, t) => (p.ids.length ? one(mean(p.ids.map(id => flock.get(id).phenotype.fleece[t.key]))) : '—');
+    return '<table class="data"><thead><tr><th>Litter</th><th>Breeding sheep</th>' +
+      E.TRAITS.map(t => '<th>' + t.name + ' <span class="muted">' + esc(t.unit) + '</span></th>').join('') + '</tr></thead><tbody>' +
+      data.history.map(p => '<tr><th>' + (p.kind === 'litter' ? p.litter : pointName(p)) + '</th><td>' + p.breeders + '</td>' +
+        E.TRAITS.map(t => '<td>' + avg(p, t) + '</td>').join('') + '</tr>').join('') +
       '</tbody></table>';
   }
 
@@ -423,14 +449,16 @@
     const lambs = all.filter(r => r.sire).length;
     const out = all.filter(retired).length;
     const now = data.history[data.history.length - 1];
-    const newest = data.gens.length - 1;
+    const found = [...data.record.firsts.entries()];
+    const latest = found[found.length - 1];
     const chartWrap = key => '<div class="chart-wrap" data-chart="' + key + '"><svg class="hist-svg" role="img"></svg><div class="chart-tip" hidden></div></div>';
     let html = '<div class="hist"><header class="hist-head"><h1>Flock history</h1>' +
       '<p class="lede">How your flock has changed since the founders. Every sheep counts here, retired ones too.</p></header>' +
       '<div class="tiles">' +
       tile('Sheep', all.length, out ? out + ' retired' : 'none retired') +
       tile('Litters', data.litters.length, plural(lambs, 'lamb') + ' born') +
-      tile('Newest generation', newest, newest ? 'founders are 0' : 'only founders so far') +
+      tile('New looks', new Set([].concat(...found.map(([, words]) => words))).size,
+        latest ? 'latest: ' + esc(latest[1][latest[1].length - 1]) + ', ' + data.where.get(latest[0]) : 'none yet') +
       tile('Diversity', now.value === null ? '—' : pct(now.value), breeding(now.breeders)) +
       '</div>';
     if (!data.litters.length) {
@@ -441,8 +469,9 @@
       '<figure class="hist-card br">' + recordHTML() +
       '<p class="hist-note">Point at a sheep to see who it is, and click to open it.' +
       (anyLost ? ' Dashed circles are lambs that didn\'t develop.' : '') + '</p></figure></section>';
-    html += '<section class="hist-sec"><h2>Fleece by generation</h2>' +
-      '<p>Each dot is a sheep\'s measured fleece. The line joins each generation\'s average. Click a dot to open that sheep.</p>' +
+    html += '<section class="hist-sec"><h2>Fleece, litter by litter</h2>' +
+      '<p>Each dot is a sheep\'s measured fleece, at the litter it was born in. The line is the average of the sheep that could breed ' +
+      'after each litter, so retiring sheep moves it as well as breeding. Click a dot to open that sheep.</p>' +
       '<div class="multiples">' + E.TRAITS.map(t => '<figure class="hist-card"><figcaption><b>' + t.name + '</b> <small>' + esc(t.unit) +
         (t.hint ? ' · ' + t.hint : '') + '</small></figcaption>' + chartWrap(t.key) +
         '<p class="hist-note" data-note="' + t.key + '"></p></figure>').join('') + '</div>' +
@@ -460,7 +489,7 @@
     for (const t of E.TRAITS) {
       const wrap = root.querySelector('[data-chart="' + t.key + '"]');
       drawFleece(wrap, t);
-      root.querySelector('[data-note="' + t.key + '"]').textContent = fleeceNote(t, genAverages(r => r.phenotype.fleece[t.key]));
+      root.querySelector('[data-note="' + t.key + '"]').textContent = fleeceNote(t, fleeceAverages(t));
     }
     drawLitters(root.querySelector('[data-chart="litters"]'));
   }

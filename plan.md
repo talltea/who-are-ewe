@@ -1,4 +1,4 @@
-# Sheep Genetics Sandbox: Game Plan
+# Who Are Ewe? Game plan
 
 Oct 13, 2026
 

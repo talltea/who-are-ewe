@@ -1,4 +1,4 @@
-/* Sheep Genetics Sandbox: Genetics guide.
+/* Who Are Ewe? Genetics guide.
  *
  * Teaches with made-up sheep only. It uses the engine's phenotype rules and
  * the flock's display helper. The only thing it knows about the player's
@@ -984,7 +984,7 @@
       [['Unrelated', '0%', '0%'], ['First cousins', '12.5%', '6.25%'], ['Half-siblings', '25%', '12.5%'], ['Full siblings', '50%', '25%'],
         ['Parent and offspring', '50%', '25%'], ['Full siblings, two generations running', '60%', '37.5%']]
         .map(([who, rel, F]) => '<tr><td>' + who + '</td><td>' + rel + '</td><td>' + F + '</td></tr>').join('') + '</tbody></table>' +
-      '<p>Inbreeding brings hidden recessives into the open, which helps detective work, but it has a cost. In this sandbox, every 10% of inbreeding ' +
+      '<p>Inbreeding brings hidden recessives into the open, which helps detective work, but it has a cost. In this game, every 10% of inbreeding ' +
       'pushes each fleece measurement about ' + pen10.toFixed(2) + ' standard deviations the wrong way (about ' + (pen10 * diam.sd).toFixed(1) + ' ' +
       diam.unit + ' coarser fiber) and makes an inbred ewe ' + Math.round(E.INBREEDING_LITTER_PENALTY * 10) + '% less likely to have twins or triplets.</p>' +
       '<p>Two more numbers look at the whole flock, counting only sheep that can still breed. A sheep\'s <b>relatedness to the flock</b> ' +

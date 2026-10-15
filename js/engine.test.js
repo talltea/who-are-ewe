@@ -212,6 +212,8 @@
       check('each litter\'s point matches diversity right after it',
         lits.every((p, i) => Math.abs(p.value - seen[i]) < 1e-12), lits.map((p, i) => p.value.toFixed(4) + '/' + seen[i].toFixed(4)).join(' '));
       check('ends with now, after the last retirement', h[h.length - 1].kind === 'now' && h[h.length - 1].value === f.diversity());
+      check('each point lists its breeding sheep', h.every(p => p.ids.length === p.breeders) &&
+        h[h.length - 1].ids.slice().sort().join() === f.list().filter(r => f.breedingsLeft(r.id) > 0).map(r => r.id).sort().join());
       check('each litter knows its parents and inbreeding',
         lits.every(p => f.get(p.sire).sex === 'ram' && f.get(p.dam).sex === 'ewe' && p.inbreeding === f.offspringInbreeding(p.sire, p.dam)));
 
@@ -239,6 +241,22 @@
       const [l1, l2] = lone.diversityHistory().filter(p => p.kind === 'litter');
       check('a litter\'s time comes after its lambs\' births', [l1, l2].every(p => p.lambs.every(id => lone.get(id).born <= p.at)));
       check('a founder added between litters falls between their times', l1.at < late.born && late.born <= l2.at, l1.at + ' < ' + late.born + ' <= ' + l2.at);
+
+      // Real times, from the clock the flock is given.
+      let tick = 1000;
+      const timed = E.createFlock({ rng: E.mulberry32(23), now: () => (tick += 10) });
+      const tRam = timed.addSheep({ sex: 'ram' });
+      const tEwe = timed.addSheep({ sex: 'ewe' });
+      const tLambs = timed.breed(tRam.id, tEwe.id).lambs;
+      timed.retire(tEwe.id);
+      check('births note the real time', tRam.bornTime === 1010 && tEwe.bornTime === 1020 && tLambs.every(l => l.bornTime > 1020));
+      check('litters note it on both parents', tRam.litters[0].time > 1020 && tRam.litters[0].time === tEwe.litters[0].time);
+      check('retiring notes it', tEwe.retiredTime > tRam.litters[0].time);
+      const tBack = E.createFlock({});
+      tBack.importState(JSON.parse(JSON.stringify(timed.exportState())));
+      check('real times survive saving', tBack.get(tEwe.id).retiredTime === tEwe.retiredTime && tBack.get(tRam.id).litters[0].time === tRam.litters[0].time);
+      timed.unretire(tEwe.id);
+      check('returning to breeding clears the retired time', tEwe.retiredTime === undefined);
     }
 
     // ------------------------------------------------------------------

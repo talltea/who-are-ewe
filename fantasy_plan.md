@@ -1,6 +1,6 @@
 # Fantasy Genes: Implementation Plan
 
-Adds optional fantasy genes to the Sheep Genetics Sandbox: **Dilution, Hue, Speckle, Lantern and Gilded**, plus **Opal**, which is built but hidden behind a dev flag. Each one teaches a different real genetic mechanism. They are off by default and switched on per flock with a checkbox.
+Adds optional fantasy genes to the game: **Dilution, Hue, Speckle, Lantern and Gilded**, plus **Opal**, which is built but hidden behind a dev flag. Each one teaches a different real genetic mechanism. They are off by default and switched on per flock with a checkbox.
 
 **Status:** implemented. Opal is dev-only: open the game with `?dev=opal` to include it in new fantasy flocks. See [Implementation notes](#implementation-notes) for where the build differs from this plan.
 
@@ -188,6 +188,6 @@ Where the build differs from or adds to the plan above:
 
 ## Open decisions
 
-- Whether and when to release Opal.
+- Opal is left out of v1 and stays behind the dev flag.
 - Founder frequencies, after playtesting.
 - Four horns and ram's mane were left out. Both are low effort and could be added later using the same flags.

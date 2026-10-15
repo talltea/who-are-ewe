@@ -1,4 +1,4 @@
-/* Sheep Genetics Sandbox: genetics engine.
+/* Who Are Ewe? Genetics engine.
  *
  * No DOM. Genotypes and hidden breeding values live only inside a flock's
  * private store. Everything a flock hands out is phenotype, pedigree, or
@@ -952,6 +952,9 @@
     let fantasy = !!opts.fantasy;
     let devGenes = devKeys(opts.devGenes);
     const maxSize = opts.maxSize > 0 ? opts.maxSize : Infinity;
+    // Births, litters and retirements also note the real time (ms since 1970),
+    // for a calendar later. Nothing reads it yet.
+    const now = opts.now || Date.now;
 
     let sheep = new Map();    // id -> public record
     let secret = new Map();   // id -> { genotype, gv }
@@ -990,6 +993,7 @@
       if (takesSpace(Object.assign({}, r, { retired: false })) && room() <= 0) throw new Error('Flock is full');
       delete r.retired;
       delete r.retiredAt;
+      delete r.retiredTime;
     }
 
     // Retiring notes the time on the birth clock, for the flock's history.
@@ -998,6 +1002,7 @@
       if (!r || r.retired) return;
       r.retired = true;
       r.retiredAt = serial;
+      r.retiredTime = now();
     }
 
     function kinship(a, b) {
@@ -1060,6 +1065,7 @@
     // up its breedings or retires. Saves from before retirements were timed
     // count a retired sheep until its last birth or litter. Each litter's at
     // is its time on that clock, which places founders added between litters.
+    // ids lists the breeding sheep at each point.
     function diversityHistory() {
       const all = [...sheep.values()];
       const byEvent = new Map();
@@ -1087,7 +1093,7 @@
       // The sheep that could breed at time t, after the litters numbered up to n.
       const poolAt = (t, n) => all.filter(r => r.born <= t && !(r.retired && retiredAt(r) < t) &&
         r.litters.filter(l => numOf(l.event) <= n).length < BREEDING_LIMIT[r.sex]);
-      const point = (pool, fields) => Object.assign({ value: diversityOf(pool), breeders: pool.length }, fields);
+      const point = (pool, fields) => Object.assign({ value: diversityOf(pool), breeders: pool.length, ids: pool.map(r => r.id) }, fields);
       const first = litters[0];
       const out = [point(first ? poolAt(first.at - first.lambs.length, 0) : breeders(), { kind: 'start' })];
       litters.forEach((l, i) => out.push(point(poolAt(l.at, l.n), {
@@ -1106,6 +1112,7 @@
         sex: fields.sex,
         gen: fields.gen || 0,
         born: ++serial,
+        bornTime: now(),
         sire: fields.sire || null,
         dam: fields.dam || null,
         inbreeding: fields.inbreeding || 0,
@@ -1165,7 +1172,8 @@
       const event = { id: 'L' + nextEvent++, sire: sireId, dam: damId, lambs: lambs.map(l => l.id) };
       if (lost) event.lost = lost;
       // at: the birth clock once the litter is born, for the flock's history.
-      const litter = mate => Object.assign({ event: event.id, mate, lambs: event.lambs.slice(), at: serial }, lost ? { lost } : {});
+      const time = now();
+      const litter = mate => Object.assign({ event: event.id, mate, lambs: event.lambs.slice(), at: serial, time }, lost ? { lost } : {});
       s.litters.push(litter(damId));
       d.litters.push(litter(sireId));
       history.push(event);

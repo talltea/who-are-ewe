@@ -1,4 +1,4 @@
-/* Sheep Genetics Sandbox: display helper.
+/* Who Are Ewe? Display helper.
  *
  * Phenotype in, swatch and labels out. This is the only code that draws a
  * sheep, and it never sees a genotype. A phenotype ("look") is

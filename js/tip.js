@@ -1,4 +1,4 @@
-/* Sheep Genetics Sandbox: tooltips.
+/* Who Are Ewe? Tooltips.
  *
  * Every title attribute on the page shows as a styled tooltip, quickly on
  * mouse hover or keyboard focus, in place of the browser's slow native one

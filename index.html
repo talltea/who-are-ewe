@@ -961,7 +961,7 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">Sheep <span class="wide-only">Genetics </span>Sandbox<span class="badge" id="fantasy-badge" hidden title="This flock has made-up fantasy genes">Fantasy</span></div>
+  <div class="brand">Who Are Ewe?<span class="badge" id="fantasy-badge" hidden title="This flock has made-up fantasy genes">Fantasy</span></div>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" data-view="flock">Flock</button>
     <button class="tab" role="tab" data-view="history">History</button>
@@ -1039,11 +1039,17 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="js/engine.js"></script>
-<script src="js/display.js"></script>
-<script src="js/guide.js"></script>
-<script src="js/history.js"></script>
-<script src="js/tip.js"></script>
-<script src="js/ui.js"></script>
+<script>
+  // Raise this with every change you publish. Browsers keep scripts for a
+  // while, and a new page running an old cached script breaks; a new number
+  // makes them fetch every script fresh, together.
+  const VERSION = '1.0.0';
+  for (const name of ['engine', 'display', 'guide', 'history', 'tip', 'ui']) {
+    const script = document.createElement('script');
+    script.src = 'js/' + name + '.js?v=' + VERSION;
+    script.async = false; // run in this order
+    document.body.appendChild(script);
+  }
+</script>
 </body>
 </html>

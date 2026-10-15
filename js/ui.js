@@ -1,4 +1,4 @@
-/* Sheep Genetics Sandbox: flock UI.
+/* Who Are Ewe? Flock UI.
  *
  * Reads phenotypes, pedigrees and the player's notes. Never genotypes: those
  * stay inside the engine's flock.
@@ -9,6 +9,7 @@
   const E = window.SheepEngine;
   const D = window.SheepDisplay;
   const U = E.UNKNOWN;
+  // From the game's first name. Changing them would lose players' saves.
   const STORAGE_KEY = 'sheep-genetics-sandbox/v1';
   const FILE_FORMAT = 'sheep-genetics-sandbox';
   const MAX_OUTCOMES = 8;
@@ -521,8 +522,19 @@
     };
   }
 
+  // Untouched notes aren't saved: loading makes them again. Every sheep has
+  // one, so that makes saves about 40% smaller.
+  const isBlankNote = n => !n.text && !n.star && Object.values(n.genes).every(slots => slots.every(sl => sl.a === U && !sl.sure)) &&
+    Object.values(n.ruledOut).every(list => !list.length);
+
+  function savedNotes() {
+    const out = {};
+    for (const id of Object.keys(notes)) if (!isBlankNote(notes[id])) out[id] = notes[id];
+    return out;
+  }
+
   function snapshot() {
-    return { format: FILE_FORMAT, version: 2, savedAt: new Date().toISOString(), flock: flock.exportState(), notes, goal, ui: persistUi() };
+    return { format: FILE_FORMAT, version: 2, savedAt: new Date().toISOString(), flock: flock.exportState(), notes: savedNotes(), goal, ui: persistUi() };
   }
 
   let saveTimer = null;
@@ -542,7 +554,7 @@
 
   // Replace the current flock with saved data. Throws if the data is bad.
   function applyData(data) {
-    if (!data || data.format !== FILE_FORMAT || !data.flock) throw new Error('Not a sheep sandbox file');
+    if (!data || data.format !== FILE_FORMAT || !data.flock) throw new Error('Not a flock file');
     const next = E.createFlock({ nameFor, maxSize: E.MAX_FLOCK_SIZE });
     next.importState(data.flock);
     flock = next;
@@ -584,17 +596,40 @@
     checks.clear();
   }
 
+  // A save that won't load is copied aside before a new flock is saved over
+  // it, and the player is offered a download of it.
+  const UNREADABLE_KEY = STORAGE_KEY + '/unreadable';
+  let unreadable = null;
+
   function loadSaved() {
+    let raw = null;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       applyData(JSON.parse(raw));
       return true;
     } catch (e) {
       console.warn('Could not load saved flock', e);
+      if (raw) {
+        unreadable = raw;
+        try { localStorage.setItem(UNREADABLE_KEY, raw); } catch (e2) { /* the download still has it */ }
+      }
       return false;
     }
   }
+
+  function download(text, name) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  const today = () => new Date().toISOString().slice(0, 10);
 
   function starterFlock(fantasy) {
     const devGenes = fantasy ? DEV_GENES : [];
@@ -616,15 +651,7 @@
   }
 
   function exportFlock() {
-    const blob = new Blob([JSON.stringify(snapshot(), null, 1)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'flock-' + new Date().toISOString().slice(0, 10) + '.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    download(JSON.stringify(snapshot(), null, 1), 'flock-' + today() + '.json');
     toast('Flock exported.');
   }
 
@@ -648,7 +675,7 @@
   let toastTimer = null;
   let toastAction = null;
   // An action, like Undo, shows as a button and keeps the toast up longer.
-  function toast(msg, action) {
+  function toast(msg, action, ms) {
     const el = $('toast');
     el.textContent = msg;
     toastAction = action ? action.run : null;
@@ -664,7 +691,7 @@
     el.style.bottom = top < innerHeight ? Math.max(24, innerHeight - top + 12) + 'px' : '';
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, action ? 7000 : 3200);
+    toastTimer = setTimeout(hideToast, ms || (action ? 7000 : 3200));
   }
 
   function hideToast() {
@@ -2028,6 +2055,10 @@
     window.addEventListener('pagehide', saveNow);
     renderAll();
     saveNow();
+    if (unreadable) {
+      toast('Your saved flock couldn\'t be opened, so this is a new one. The old save is kept.',
+        { label: 'Download it', run: () => download(unreadable, 'unreadable-flock-' + today() + '.json') }, 30000);
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
