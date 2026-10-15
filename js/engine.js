@@ -1058,7 +1058,8 @@
     // litter, and now. It's rebuilt from the records, with the order sheep
     // were born in as the clock: a sheep counts from its birth until it uses
     // up its breedings or retires. Saves from before retirements were timed
-    // count a retired sheep until its last birth or litter.
+    // count a retired sheep until its last birth or litter. Each litter's at
+    // is its time on that clock, which places founders added between litters.
     function diversityHistory() {
       const all = [...sheep.values()];
       const byEvent = new Map();
@@ -1090,7 +1091,7 @@
       const first = litters[0];
       const out = [point(first ? poolAt(first.at - first.lambs.length, 0) : breeders(), { kind: 'start' })];
       litters.forEach((l, i) => out.push(point(poolAt(l.at, l.n), {
-        kind: 'litter', litter: i + 1, event: l.event, sire: l.sire, dam: l.dam, lambs: l.lambs, lost: l.lost,
+        kind: 'litter', litter: i + 1, event: l.event, at: l.at, sire: l.sire, dam: l.dam, lambs: l.lambs, lost: l.lost,
         inbreeding: kinship(l.sire, l.dam),
       })));
       out.push(point(breeders(), { kind: 'now' }));

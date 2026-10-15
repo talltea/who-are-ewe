@@ -232,6 +232,13 @@
       lone.addSheep({ sex: 'ewe' });
       const lh = lone.diversityHistory();
       check('no litters yet: just the start and now', lh.length === 2 && lh[0].kind === 'start' && lh[1].kind === 'now');
+      const [loneRam, loneEwe] = lone.list();
+      lone.breed(loneRam.id, loneEwe.id);
+      const late = lone.addSheep({ sex: 'ewe' });
+      lone.breed(loneRam.id, late.id);
+      const [l1, l2] = lone.diversityHistory().filter(p => p.kind === 'litter');
+      check('a litter\'s time comes after its lambs\' births', [l1, l2].every(p => p.lambs.every(id => lone.get(id).born <= p.at)));
+      check('a founder added between litters falls between their times', l1.at < late.born && late.born <= l2.at, l1.at + ' < ' + late.born + ' <= ' + l2.at);
     }
 
     // ------------------------------------------------------------------

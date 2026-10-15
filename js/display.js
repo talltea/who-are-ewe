@@ -164,13 +164,44 @@
       '" role="img" aria-label="' + label + '" title="' + label + '">' + horns + '</span>';
   }
 
+  const notWhite = look => look.color !== 'white';
+  const always = () => true;
+
+  /**
+   * Every look a flock can show, in the sheep panel's order and words, as
+   * [part, choices, seen]. Each choice is { value, label, test(look) }, and
+   * seen(look) says whether the part shows on that sheep at all: white hides
+   * shade, pattern and spotting, so their choices match only sheep that aren't
+   * white. has(key) says whether the flock has that gene.
+   */
+  function lookGroups(has, fantasy) {
+    const item = (value, label, test) => ({ value, label, test });
+    const yesNo = (key, yes, no, test) => [item(key + ':yes', yes, test), item(key + ':no', no, p => !test(p))];
+    const colors = ['white', 'black', 'brown'].concat(has('hue') ? ['rose', 'blue', 'violet'] : []);
+    return [
+      ['Color', colors.map(c => item('color:' + c, COLOR_NAME[c], p => p.color === c)), always],
+      has('dilution') && ['Shade', ['full', 'dusk', 'frost'].map(k =>
+        item('shade:' + k, SHADE_NAME[k], p => notWhite(p) && (p.shade || 'full') === k)), notWhite],
+      ['Pattern', ['solid', 'badgerface', 'mouflon', 'mixed'].map(k =>
+        item('pattern:' + k, cap(PATTERN_NAME[k]), p => notWhite(p) && p.pattern === k)), notWhite],
+      ['Spotting', [item('spots:yes', 'White patches', p => notWhite(p) && p.spotted),
+        item('spots:no', 'No white patches', p => notWhite(p) && !p.spotted)], notWhite],
+      has('opal') && ['Sheen', [['full', 'Opal'], ['patchy', 'Patchy opal'], ['none', 'No opal']].map(([k, label]) =>
+        item('opal:' + k, label, p => (p.opal || 'none') === k)), always],
+      has('speckle') && ['Speckles', yesNo('speckle', 'Speckled', 'No speckles', p => p.speckled), always],
+      fantasy && ['Tips', yesNo('gilded', 'Gilded', 'Plain tips', p => p.gilded), always],
+      has('lantern') && ['Glow', yesNo('glow', 'Glowing', 'No glow', p => p.glow), always],
+      ['Horns', yesNo('horns', 'Horned', 'Polled', p => p.horned), always],
+    ].filter(Boolean);
+  }
+
   /** An empty dashed circle, for a lamb that doesn't develop. */
   function emptySwatch(size, label) {
     return '<span class="swatch swatch-' + (size || 'md') + ' is-empty" role="img" aria-label="' + (label || 'No lamb') + '"></span>';
   }
 
   root.SheepDisplay = {
-    swatch, emptySwatch, describe, part, background, title, sexIcon: sex => SEX_ICON[sex] || '',
-    COLOR_NAME, SHADE_NAME, PATTERN_NAME,
+    swatch, emptySwatch, describe, part, background, title, lookGroups, sexIcon: sex => SEX_ICON[sex] || '',
+    COLOR_NAME, SHADE_NAME,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

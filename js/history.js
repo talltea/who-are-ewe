@@ -1,9 +1,9 @@
 /* Sheep Genetics Sandbox: flock history.
  *
- * How the flock has changed: fleece generation by generation, and the
- * breeding flock's diversity and each litter's inbreeding, litter by
- * litter. It reads only what the player can see anyway: measured fleece,
- * pedigrees and litters.
+ * How the flock has changed: every sheep in the order it joined the flock,
+ * fleece generation by generation, and the breeding flock's diversity and
+ * each litter's inbreeding, litter by litter. It reads only what the player
+ * can see anyway: looks, measured fleece, pedigrees and litters.
  */
 (function () {
   'use strict';
@@ -41,7 +41,39 @@
     for (const r of sheep) (gens[r.gen] = gens[r.gen] || []).push(r);
     for (let g = 0; g < gens.length; g++) gens[g] = gens[g] || [];
     const history = flock.diversityHistory();
-    return { sheep, gens, history, litters: history.filter(p => p.kind === 'litter') };
+    const litters = history.filter(p => p.kind === 'litter');
+    return { sheep, gens, history, litters, record: birthRecord(sheep, litters) };
+  }
+
+  // Every sheep in the order it joined the flock: the starting founders,
+  // then each litter, with founders added later between the litters they
+  // came between. firsts maps a sheep to the looks it was first to show,
+  // leaving out looks a starting founder already had.
+  function birthRecord(sheep, litters) {
+    const founders = sheep.filter(r => !r.sire).sort((a, b) => a.born - b.born);
+    let i = 0;
+    const until = t => { const out = []; while (i < founders.length && founders[i].born <= t) out.push(founders[i++]); return out; };
+    const entries = [{ kind: 'start', sheep: until(litters.length ? litters[0].at : Infinity) }];
+    for (const l of litters) {
+      const added = until(l.at);
+      if (added.length) entries.push({ kind: 'added', sheep: added, after: l.litter - 1 });
+      entries.push({ kind: 'litter', litter: l, sheep: l.lambs.map(id => flock.get(id)) });
+    }
+    if (i < founders.length) entries.push({ kind: 'added', sheep: founders.slice(i), after: litters.length });
+
+    const has = key => flock.activeGenes().some(g => g.key === key);
+    const looks = [].concat(...D.lookGroups(has, flock.fantasy).map(([part, items]) =>
+      items.map(it => ({ test: it.test, word: it.label.toLowerCase() + (part === 'Shade' ? ' shade' : '') }))));
+    const seen = new Set();
+    const firsts = new Map();
+    for (const entry of entries) {
+      for (const r of entry.sheep) {
+        const fresh = looks.filter(k => !seen.has(k) && k.test(r.phenotype));
+        fresh.forEach(k => seen.add(k));
+        if (entry.kind !== 'start' && fresh.length) firsts.set(r.id, fresh.map(k => k.word));
+      }
+    }
+    return { entries, firsts };
   }
 
   const nameOf = id => { const r = flock.get(id); return r ? r.name : 'unknown'; };
@@ -312,6 +344,50 @@
     return s;
   }
 
+  // ---------------------------------------------------- birth record
+
+  // The founders on a row of their own, then a grid with a cell per litter.
+  // A cell says which looks its sheep were first to show.
+  function recordHTML() {
+    const { entries, firsts } = data.record;
+    const sheepButton = (r, where) => {
+      const look = D.describe(r.phenotype);
+      const first = firsts.get(r.id);
+      const tip = r.name + ' ' + D.sexIcon(r.sex) + ' · ' + look.title + ', ' + look.horns.toLowerCase() + '\n' + where +
+        (first ? '\nFirst ' + first.join(', ') + ' in the flock' : '');
+      return '<button class="br-sheep' + (first ? ' is-first' : '') + '" data-open="' + r.id + '" title="' + esc(tip) + '">' +
+        D.swatch(r.phenotype, 'sm') + '</button>';
+    };
+    const lost = '<span class="br-lost" title="A lamb that didn\'t develop">' + D.emptySwatch('sm', 'A lamb that didn\'t develop') + '</span>';
+    const cell = (cls, label, list, body) => {
+      const words = [...new Set([].concat(...list.map(r => firsts.get(r.id) || [])))];
+      return '<li class="br-cell' + cls + '"><span class="br-num">' + label + '</span><span class="br-lambs">' + body + '</span>' +
+        (words.length ? '<span class="br-new">first ' + esc(words.join(', ')) + '</span>' : '') + '</li>';
+    };
+    let founders = '';
+    const cells = [];
+    for (const e of entries) {
+      if (e.kind === 'start') { founders = e.sheep.map(r => sheepButton(r, 'Founder')).join(''); continue; }
+      if (e.kind === 'added') {
+        const where = 'Founder, ' + (e.after ? 'added after litter ' + e.after : 'added');
+        cells.push(cell(' br-added', 'Added', e.sheep, e.sheep.map(r => sheepButton(r, where)).join('')));
+        continue;
+      }
+      const l = e.litter;
+      const where = 'Litter ' + l.litter + ' · ' + nameOf(l.sire) + ' × ' + nameOf(l.dam);
+      cells.push(cell('', l.litter, e.sheep, e.sheep.map(r => sheepButton(r, where)).join('') + lost.repeat(l.lost || 0) || '<span class="muted">none</span>'));
+    }
+    return '<div class="br-founders"><span class="br-tag">Founders</span>' + founders + '</div>' +
+      '<ol class="br-grid">' + cells.join('') + '</ol>';
+  }
+
+  function recordNote() {
+    const n = new Set([].concat(...[...data.record.firsts.values()])).size;
+    return 'Every sheep in the order it joined your flock: the founders, then each litter\'s lambs. ' +
+      (n ? (n === 1 ? 'One look' : n + ' looks') + ' turned up that no founder had, marked where ' + (n === 1 ? 'it' : 'each') + ' first appeared.'
+        : 'Every look so far was already among the founders.');
+  }
+
   // ------------------------------------------------------------ tables
 
   function fleeceTable() {
@@ -360,6 +436,11 @@
     if (!data.litters.length) {
       return html + '<p class="hist-empty">No litters yet. Breed a few, then come back to see how your flock changes.</p></div>';
     }
+    const anyLost = data.litters.some(l => l.lost);
+    html += '<section class="hist-sec"><h2>Birth record</h2><p>' + recordNote() + '</p>' +
+      '<figure class="hist-card br">' + recordHTML() +
+      '<p class="hist-note">Point at a sheep to see who it is, and click to open it.' +
+      (anyLost ? ' Dashed circles are lambs that didn\'t develop.' : '') + '</p></figure></section>';
     html += '<section class="hist-sec"><h2>Fleece by generation</h2>' +
       '<p>Each dot is a sheep\'s measured fleece. The line joins each generation\'s average. Click a dot to open that sheep.</p>' +
       '<div class="multiples">' + E.TRAITS.map(t => '<figure class="hist-card"><figcaption><b>' + t.name + '</b> <small>' + esc(t.unit) +

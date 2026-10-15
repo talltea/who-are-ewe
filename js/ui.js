@@ -684,26 +684,8 @@
   }
   const hiddenRetired = r => !ui.showRetired && hideableRetired(r);
 
-  // The Looks filter's choices, in the sheep panel's order and words. A part
-  // that white hides matches only sheep that aren't white.
-  function lookGroups() {
-    const shows = p => p.color !== 'white';
-    const cap = s => s[0].toUpperCase() + s.slice(1);
-    const item = (value, label, test) => ({ value, label, test });
-    const yesNo = (key, yes, no, test) => [item(key + ':yes', yes, test), item(key + ':no', no, p => !test(p))];
-    const colors = ['white', 'black', 'brown'].concat(hasGene('hue') ? ['rose', 'blue', 'violet'] : []);
-    return [
-      ['Color', colors.map(c => item('color:' + c, D.COLOR_NAME[c], p => p.color === c))],
-      hasGene('dilution') && ['Shade', ['full', 'dusk', 'frost'].map(k => item('shade:' + k, D.SHADE_NAME[k], p => shows(p) && (p.shade || 'full') === k))],
-      ['Pattern', ['solid', 'badgerface', 'mouflon', 'mixed'].map(k => item('pattern:' + k, cap(D.PATTERN_NAME[k]), p => p.pattern === k))],
-      ['Spotting', [item('spots:yes', 'White patches', p => shows(p) && p.spotted), item('spots:no', 'No white patches', p => shows(p) && !p.spotted)]],
-      hasGene('opal') && ['Sheen', [['full', 'Opal'], ['patchy', 'Patchy opal'], ['none', 'No opal']].map(([k, label]) => item('opal:' + k, label, p => (p.opal || 'none') === k))],
-      hasGene('speckle') && ['Speckles', yesNo('speckle', 'Speckled', 'No speckles', p => p.speckled)],
-      flock.fantasy && ['Tips', yesNo('gilded', 'Gilded', 'Plain tips', p => p.gilded)],
-      hasGene('lantern') && ['Glow', yesNo('glow', 'Glowing', 'No glow', p => p.glow)],
-      ['Horns', yesNo('horns', 'Horned', 'Polled', p => p.horned)],
-    ].filter(Boolean);
-  }
+  // The Looks filter's choices: every look this flock can show.
+  const lookGroups = () => D.lookGroups(hasGene, flock.fantasy);
 
   function lookTest(value) {
     for (const [, items] of lookGroups()) for (const it of items) if (it.value === value) return it.test;
