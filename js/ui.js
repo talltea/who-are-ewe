@@ -56,6 +56,7 @@
     pen: { ram: null, ewe: null },
     sex: 'all',
     allele: '',
+    look: '',
     sort: 'born',
     dir: 1,
     suggest: false,
@@ -515,7 +516,7 @@
   function persistUi() {
     return {
       view: ui.view, side: ui.side, selected: ui.selected, pen: ui.pen,
-      sex: ui.sex, allele: ui.allele, sort: ui.sort, dir: ui.dir,
+      sex: ui.sex, allele: ui.allele, look: ui.look, sort: ui.sort, dir: ui.dir,
       fantasyNotes: ui.fantasyNotes, hideInvite: ui.hideInvite, showRetired: ui.showRetired, starredOnly: ui.starredOnly, goalOnly: ui.goalOnly, genOpen: ui.genOpen,
     };
   }
@@ -550,7 +551,7 @@
     goalCache.clear();
     for (const r of flock.list()) noteFor(r.id);
     const u = data.ui || {};
-    ui.view = u.view === 'guide' ? 'guide' : 'flock';
+    ui.view = ['guide', 'history'].includes(u.view) ? u.view : 'flock';
     ui.side = u.side === 'breed' ? 'breed' : 'sheep';
     ui.selected = u.selected && flock.get(u.selected) ? u.selected : null;
     ui.pen = { ram: null, ewe: null };
@@ -562,6 +563,7 @@
     }
     ui.sex = ['all', 'ram', 'ewe'].includes(u.sex) ? u.sex : 'all';
     ui.allele = typeof u.allele === 'string' ? u.allele : '';
+    ui.look = typeof u.look === 'string' ? u.look : '';
     ui.sort = typeof u.sort === 'string' ? u.sort : 'born';
     ui.dir = u.dir === -1 ? -1 : 1;
     ui.fantasyNotes = u.fantasyNotes !== false;
@@ -673,12 +675,39 @@
 
   // ------------------------------------------------------------- grid
 
-  // Retired sheep are hidden unless asked for, or unless they're selected, in
-  // the pen, or a parent of the selected sheep.
-  function hiddenRetired(r) {
-    if (ui.showRetired || !retired(r) || isStarred(r.id)) return false;
+  // Retired sheep are hidden unless asked for, or unless they're starred,
+  // selected, in the pen, or a parent of the selected sheep.
+  function hideableRetired(r) {
+    if (!retired(r) || isStarred(r.id)) return false;
     const sel = ui.selected && flock.get(ui.selected);
     return r.id !== ui.selected && r.id !== ui.pen.ram && r.id !== ui.pen.ewe && !(sel && (sel.sire === r.id || sel.dam === r.id));
+  }
+  const hiddenRetired = r => !ui.showRetired && hideableRetired(r);
+
+  // The Looks filter's choices, in the sheep panel's order and words. A part
+  // that white hides matches only sheep that aren't white.
+  function lookGroups() {
+    const shows = p => p.color !== 'white';
+    const cap = s => s[0].toUpperCase() + s.slice(1);
+    const item = (value, label, test) => ({ value, label, test });
+    const yesNo = (key, yes, no, test) => [item(key + ':yes', yes, test), item(key + ':no', no, p => !test(p))];
+    const colors = ['white', 'black', 'brown'].concat(hasGene('hue') ? ['rose', 'blue', 'violet'] : []);
+    return [
+      ['Color', colors.map(c => item('color:' + c, D.COLOR_NAME[c], p => p.color === c))],
+      hasGene('dilution') && ['Shade', ['full', 'dusk', 'frost'].map(k => item('shade:' + k, D.SHADE_NAME[k], p => shows(p) && (p.shade || 'full') === k))],
+      ['Pattern', ['solid', 'badgerface', 'mouflon', 'mixed'].map(k => item('pattern:' + k, cap(D.PATTERN_NAME[k]), p => p.pattern === k))],
+      ['Spotting', [item('spots:yes', 'White patches', p => shows(p) && p.spotted), item('spots:no', 'No white patches', p => shows(p) && !p.spotted)]],
+      hasGene('opal') && ['Sheen', [['full', 'Opal'], ['patchy', 'Patchy opal'], ['none', 'No opal']].map(([k, label]) => item('opal:' + k, label, p => (p.opal || 'none') === k))],
+      hasGene('speckle') && ['Speckles', yesNo('speckle', 'Speckled', 'No speckles', p => p.speckled)],
+      flock.fantasy && ['Tips', yesNo('gilded', 'Gilded', 'Plain tips', p => p.gilded)],
+      hasGene('lantern') && ['Glow', yesNo('glow', 'Glowing', 'No glow', p => p.glow)],
+      ['Horns', yesNo('horns', 'Horned', 'Polled', p => p.horned)],
+    ].filter(Boolean);
+  }
+
+  function lookTest(value) {
+    for (const [, items] of lookGroups()) for (const it of items) if (it.value === value) return it.test;
+    return null;
   }
 
   function visibleSheep() {
@@ -686,6 +715,8 @@
     if (ui.starredOnly) list = list.filter(r => isStarred(r.id));
     if (ui.goalOnly && hasGoalAlleles()) list = list.filter(r => goalOf(r).status !== 'no');
     if (ui.sex !== 'all') list = list.filter(r => r.sex === ui.sex);
+    const looks = ui.look && lookTest(ui.look);
+    if (looks) list = list.filter(r => looks(r.phenotype));
     if (ui.allele) {
       const [gene, a] = ui.allele.split(':');
       list = list.filter(r => notes[r.id] && notes[r.id].genes[gene] && notes[r.id].genes[gene].some(s => s.a === a));
@@ -860,11 +891,13 @@
   function countHTML(list) {
     const all = flock.list();
     const rams = all.filter(r => r.sex === 'ram').length;
-    const hidden = all.filter(hiddenRetired).length;
+    const hideable = all.filter(hideableRetired).length;
+    const hidden = ui.showRetired ? 0 : hideable;
     const room = flock.room();
     return all.length + ' sheep · ' + plural(rams, 'ram') + ', ' + plural(all.length - rams, 'ewe') + diversityHTML() +
       (room <= 0 ? ' · flock full (' + all.filter(r => !retired(r)).length + ' can breed)' : room <= 10 ? ' · room for ' + room + ' more' : '') +
-      (hidden ? ' · ' + hidden + ' retired hidden' : '') +
+      (hideable ? ' · <button type="button" class="link" data-act="show-retired" data-fk="show-retired">' +
+        (ui.showRetired ? 'Hide ' : 'Show ') + hideable + ' retired</button>' : '') +
       (list.length !== all.length - hidden ? ' · showing ' + list.length : '');
   }
 
@@ -881,8 +914,8 @@
     $('grid').innerHTML = gridHTML(list);
     $('grid').classList.toggle('selecting', ui.selecting);
     renderSelectBar(list);
-    if (focused && (focused.startsWith('card-') || focused.startsWith('gen-') || focused.startsWith('choose-gen-') || focused.startsWith('bulk-'))) {
-      const el = document.querySelector('#grid [data-fk="' + focused + '"], #select-bar [data-fk="' + focused + '"]');
+    if (focused && (focused.startsWith('card-') || focused.startsWith('gen-') || focused.startsWith('choose-gen-') || focused.startsWith('bulk-') || focused === 'show-retired')) {
+      const el = document.querySelector('#grid [data-fk="' + focused + '"], #select-bar [data-fk="' + focused + '"], #flock-count [data-fk="' + focused + '"]');
       if (el) el.focus({ preventScroll: true });
     }
   }
@@ -956,23 +989,17 @@
 
   function renderToolbar() {
     for (const b of document.querySelectorAll('[data-sex]')) b.setAttribute('aria-pressed', String(b.dataset.sex === ui.sex));
+    $('look-filter').value = ui.look;
     $('allele-filter').value = ui.allele;
     $('sort-select').value = ui.sort;
     $('sort-dir').textContent = ui.dir === 1 ? '↑' : '↓';
     $('sort-dir').title = ui.dir === 1 ? 'Ascending' : 'Descending';
-    $('show-retired').checked = ui.showRetired;
     $('star-filter').setAttribute('aria-pressed', String(ui.starredOnly));
     $('select-btn').setAttribute('aria-pressed', String(ui.selecting));
     const full = flock.room() <= 0;
     $('add-btn').disabled = full;
     $('add-btn').title = full ? fullText() : 'Add a new founder with random genes';
-    const last = flock.lastBreeding();
-    const undo = $('undo-btn');
-    undo.disabled = !last;
-    undo.title = last ? 'Remove the litter of ' + nameOf(last.sire) + ' × ' + nameOf(last.dam) : 'Nothing to undo';
-    const anySure = flock.list().some(r => sureOf(r.id).count > 0);
-    $('check-all-btn').disabled = !anySure;
-    $('check-all-btn').title = anySure ? 'Flag any guess marked sure that is wrong, on every sheep' : 'Mark a guess as sure first';
+    $('check-all-btn').hidden = !flock.list().some(r => sureOf(r.id).count > 0);
   }
 
   // -------------------------------------------------------- side panel
@@ -1251,7 +1278,7 @@
     $('new-dialog').showModal();
   }
 
-  const RETIRE_TIP = 'Stop breeding. Retired sheep stay in the flock and its pedigrees, take no space, and are hidden unless Show retired is ticked.';
+  const RETIRE_TIP = 'Stop breeding. Retired sheep stay in the flock and its pedigrees and take no space. They\'re hidden until you click Show retired, above the flock.';
 
   // The side panel's breed button says what it will do with this sheep.
   function panelPenButton(r) {
@@ -1441,11 +1468,15 @@
     return lost === 1 ? 'The lamb didn\'t develop.' : lost === 2 ? 'Neither twin developed.' : 'None of the triplets developed.';
   }
 
+  // The newest litter, with Undo. After an undo, the one before it shows, so
+  // Undo can keep stepping back.
   function lastLitterHTML() {
     const last = flock.lastBreeding();
-    if (!last || last.id !== ui.lastLitter) return '';
+    if (!last) return '';
     const lambs = last.lambs.map(id => flock.get(id)).filter(Boolean);
-    return '<div class="born"><div class="born-head">' + (lambs.length ? 'Born just now' : 'No lambs this time') +
+    const head = last.id === ui.lastLitter ? (lambs.length ? 'Born just now' : 'No lambs this time')
+      : 'Last litter · ' + esc(nameOf(last.sire)) + ' × ' + esc(nameOf(last.dam)) + (lambs.length ? '' : ' · no lambs');
+    return '<div class="born"><div class="born-head">' + head +
       (last.lost ? ' · ' + lostText(last.lost, lambs.length) : '') + '</div>' +
       lambs.map(x => '<button class="lamb-chip" data-open="' + x.id + '">' + D.swatch(x.phenotype, 'sm') + esc(x.name) +
         ' <span class="faint">' + D.sexIcon(x.sex) + ' ' + esc(D.title(x.phenotype)) + '</span></button>').join('') +
@@ -1586,18 +1617,27 @@
   }
 
   function renderView() {
-    const guide = ui.view === 'guide';
-    $('view-flock').hidden = guide;
-    $('view-guide').hidden = !guide;
+    for (const v of ['flock', 'history', 'guide']) $('view-' + v).hidden = ui.view !== v;
     for (const b of document.querySelectorAll('.tab[data-view]')) b.setAttribute('aria-selected', String(b.dataset.view === ui.view));
-    if (guide) window.SheepGuide.render($('view-guide'), { fantasy: flock.fantasy, genes: genesOn().map(g => g.key) });
+    if (ui.view === 'guide') window.SheepGuide.render($('view-guide'), { fantasy: flock.fantasy, genes: genesOn().map(g => g.key) });
+    if (ui.view === 'history') window.SheepHistory.render($('view-history'), flock, { open: openFromHistory });
   }
 
-  // Header badge and the allele filter follow the flock's genes.
+  // A sheep picked on the history page opens in the flock view.
+  function openFromHistory(id) {
+    if (!flock.get(id)) return;
+    ui.view = 'flock';
+    renderView();
+    select(id);
+    const card = document.querySelector('.card[data-id="' + id + '"]');
+    if (card && !window.matchMedia('(max-width: 900px)').matches) card.scrollIntoView({ block: 'center' });
+  }
+
+  // Header badge and both filters follow the flock's genes.
   let builtFor = null;
   function renderFlockKind() {
     $('fantasy-badge').hidden = !flock.fantasy;
-    const kind = genesOn().map(g => g.key).join();
+    const kind = genesOn().map(g => g.key).join() + (flock.fantasy ? '+fantasy' : '');
     if (builtFor === kind) return;
     builtFor = kind;
     const genes = genesOn();
@@ -1605,6 +1645,11 @@
     $('allele-filter').innerHTML = '<option value="">Anything</option>' + genes.map(g =>
       '<optgroup label="' + g.name + (g.fantasy ? ' (fantasy)' : '') + '">' +
       g.alleles.map(a => '<option value="' + g.key + ':' + a.id + '">' + esc(a.plain + '  ' + a.name) + '</option>').join('') +
+      '</optgroup>').join('');
+    const looks = lookGroups();
+    if (ui.look && !lookTest(ui.look)) ui.look = '';
+    $('look-filter').innerHTML = '<option value="">Anything</option>' + looks.map(([name, items]) =>
+      '<optgroup label="' + name + '">' + items.map(it => '<option value="' + it.value + '">' + esc(it.label) + '</option>').join('') +
       '</optgroup>').join('');
   }
 
@@ -1730,7 +1775,7 @@
     // Starred sheep, and the one open in the panel, stay in view.
     const hidden = list.filter(hiddenRetired).length;
     toast(sheepWords(list) + are(list) + ' retired from breeding' +
-      (!hidden ? '.' : hidden === list.length ? ', and hidden unless Show retired is ticked.' : '. ' + (hidden === 1 ? 'One of them is' : hidden + ' of them are') + ' hidden unless Show retired is ticked.'),
+      (!hidden ? '.' : hidden === list.length ? ', and hidden until you click Show retired.' : '. ' + (hidden === 1 ? 'One of them is' : hidden + ' of them are') + ' hidden until you click Show retired.'),
       { label: 'Undo', run: () => unretireSheep(list) });
   }
 
@@ -1813,7 +1858,11 @@
     }
 
     const open = t.closest('[data-open]');
-    if (open) { select(open.dataset.open); return; }
+    if (open) {
+      if (ui.view === 'history') openFromHistory(open.dataset.open);
+      else select(open.dataset.open);
+      return;
+    }
 
     const pick = t.closest('[data-pick]');
     if (pick) {
@@ -1886,6 +1935,7 @@
         case 'cancel-pick': ui.pen = { ram: null, ewe: null }; refresh(); break;
         case 'try-fantasy': tryFantasy(); break;
         case 'star-filter': ui.starredOnly = !ui.starredOnly; refresh(); break;
+        case 'show-retired': ui.showRetired = !ui.showRetired; refresh(); break;
         case 'edit-goal': editGoal(); break;
         case 'goal-alleles': ui.goalOpen = !ui.goalOpen; renderSide(); break;
         case 'hide-invite': ui.hideInvite = true; refresh(); break;
@@ -1919,9 +1969,9 @@
     }
     if (t.matches('[data-goal-only]')) { ui.goalOnly = t.checked; refresh(); return; }
     if (t.matches('.slot-select')) { setSlot(t.dataset.gene, +t.dataset.slot, t.value); return; }
+    if (t.id === 'look-filter') { ui.look = t.value; refresh(); return; }
     if (t.id === 'allele-filter') { ui.allele = t.value; refresh(); return; }
     if (t.id === 'sort-select') { ui.sort = t.value; ui.dir = 1; refresh(); return; }
-    if (t.id === 'show-retired') { ui.showRetired = t.checked; refresh(); return; }
     if (t.id === 'import-file' && t.files && t.files[0]) { importFlock(t.files[0]); t.value = ''; }
   }
 

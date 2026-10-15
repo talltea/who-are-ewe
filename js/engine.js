@@ -989,6 +989,15 @@
       if (!r || !r.retired) return;
       if (takesSpace(Object.assign({}, r, { retired: false })) && room() <= 0) throw new Error('Flock is full');
       delete r.retired;
+      delete r.retiredAt;
+    }
+
+    // Retiring notes the time on the birth clock, for the flock's history.
+    function retire(id) {
+      const r = rec(id);
+      if (!r || r.retired) return;
+      r.retired = true;
+      r.retiredAt = serial;
     }
 
     function kinship(a, b) {
@@ -1035,14 +1044,57 @@
     // lamb of two of them picked at random would be. It's 1 when no two share
     // an ancestor and falls as more of the flock descends from the same few.
     // Null with fewer than two breeding sheep.
-    function diversity() {
-      const pool = breeders();
+    function diversityOf(pool) {
       if (pool.length < 2) return null;
       let sum = 0;
       for (let i = 0; i < pool.length; i++) {
         for (let j = i + 1; j < pool.length; j++) sum += kinship(pool[i].id, pool[j].id);
       }
       return 1 - sum / (pool.length * (pool.length - 1) / 2);
+    }
+    const diversity = () => diversityOf(breeders());
+
+    // The breeding flock's diversity over time: at the start, after each
+    // litter, and now. It's rebuilt from the records, with the order sheep
+    // were born in as the clock: a sheep counts from its birth until it uses
+    // up its breedings or retires. Saves from before retirements were timed
+    // count a retired sheep until its last birth or litter.
+    function diversityHistory() {
+      const all = [...sheep.values()];
+      const byEvent = new Map();
+      for (const r of all) {
+        for (const l of r.litters) {
+          if (!l.event || byEvent.has(l.event)) continue;
+          byEvent.set(l.event, {
+            event: l.event, n: +String(l.event).replace(/\D/g, ''), at: l.at,
+            sire: r.sex === 'ram' ? r.id : l.mate, dam: r.sex === 'ram' ? l.mate : r.id,
+            lambs: l.lambs.filter(id => sheep.has(id)), lost: l.lost || 0,
+          });
+        }
+      }
+      const litters = [...byEvent.values()].sort((a, b) => a.n - b.n);
+      // Older saves don't time litters: the lambs do, and an empty litter
+      // goes with the one before it.
+      let clock = 0;
+      for (const l of litters) {
+        if (l.at === undefined) l.at = l.lambs.length ? Math.max(...l.lambs.map(id => sheep.get(id).born)) : clock;
+        clock = l.at;
+      }
+      const atOf = id => (byEvent.has(id) ? byEvent.get(id).at : 0);
+      const numOf = id => (byEvent.has(id) ? byEvent.get(id).n : 0);
+      const retiredAt = r => (r.retiredAt !== undefined ? r.retiredAt : Math.max(r.born, ...r.litters.map(l => atOf(l.event))));
+      // The sheep that could breed at time t, after the litters numbered up to n.
+      const poolAt = (t, n) => all.filter(r => r.born <= t && !(r.retired && retiredAt(r) < t) &&
+        r.litters.filter(l => numOf(l.event) <= n).length < BREEDING_LIMIT[r.sex]);
+      const point = (pool, fields) => Object.assign({ value: diversityOf(pool), breeders: pool.length }, fields);
+      const first = litters[0];
+      const out = [point(first ? poolAt(first.at - first.lambs.length, 0) : breeders(), { kind: 'start' })];
+      litters.forEach((l, i) => out.push(point(poolAt(l.at, l.n), {
+        kind: 'litter', litter: i + 1, event: l.event, sire: l.sire, dam: l.dam, lambs: l.lambs, lost: l.lost,
+        inbreeding: kinship(l.sire, l.dam),
+      })));
+      out.push(point(breeders(), { kind: 'now' }));
+      return out;
     }
 
     function makeRecord(fields, genotype, gv) {
@@ -1111,7 +1163,8 @@
       }
       const event = { id: 'L' + nextEvent++, sire: sireId, dam: damId, lambs: lambs.map(l => l.id) };
       if (lost) event.lost = lost;
-      const litter = mate => Object.assign({ event: event.id, mate, lambs: event.lambs.slice() }, lost ? { lost } : {});
+      // at: the birth clock once the litter is born, for the flock's history.
+      const litter = mate => Object.assign({ event: event.id, mate, lambs: event.lambs.slice(), at: serial }, lost ? { lost } : {});
       s.litters.push(litter(damId));
       d.litters.push(litter(sireId));
       history.push(event);
@@ -1279,13 +1332,14 @@
       lastBreeding: () => history[history.length - 1] || null,
       undoLastBreeding,
       rename(id, name) { const r = rec(id); if (r && name) r.name = name; },
-      retire(id) { const r = rec(id); if (r) r.retired = true; },
+      retire,
       unretire,
       kinship,
       offspringInbreeding: (sireId, damId) => kinship(sireId, damId),
       relatedness,
       relatednessToFlock,
       diversity,
+      diversityHistory,
       predictFleece,
       predictGilded,
       checkSureGuesses,

@@ -171,6 +171,6 @@
 
   root.SheepDisplay = {
     swatch, emptySwatch, describe, part, background, title, sexIcon: sex => SEX_ICON[sex] || '',
-    COLOR_NAME, SHADE_NAME,
+    COLOR_NAME, SHADE_NAME, PATTERN_NAME,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -184,6 +184,57 @@
     }
 
     // ------------------------------------------------------------------
+    heading('Diversity history');
+    {
+      const f = E.createFlock({ rng: E.mulberry32(21) });
+      const rams = [f.addSheep({ sex: 'ram' }), f.addSheep({ sex: 'ram' })];
+      const ewes = [f.addSheep({ sex: 'ewe' }), f.addSheep({ sex: 'ewe' }), f.addSheep({ sex: 'ewe' })];
+      // Breed, retire, add and breed again, noting diversity right after each litter.
+      const seen = [];
+      const litter = (s, d) => { const res = f.breed(s.id, d.id); seen.push(f.diversity()); return res.lambs; };
+      const firstLambs = litter(rams[0], ewes[0]);
+      litter(rams[0], ewes[1]);
+      f.retire(firstLambs[0].id);
+      f.retire(ewes[2].id);
+      f.addSheep({ sex: 'ewe' });
+      litter(rams[1], ewes[0]);
+      for (let i = 0; i < 4; i++) litter(rams[0], ewes[1]); // ewe 1 uses up her breedings
+      const kids = f.list().filter(r => r.sire && !r.retired);
+      const kidRam = kids.find(r => r.sex === 'ram');
+      const kidEwe = kids.find(r => r.sex === 'ewe');
+      check('the test flock has a ram lamb and a ewe lamb to breed', !!(kidRam && kidEwe));
+      litter(kidRam, kidEwe);
+      f.retire(rams[1].id);
+      const h = f.diversityHistory();
+      const lits = h.filter(p => p.kind === 'litter');
+      check('starts with the founders, at 100%', h[0].kind === 'start' && h[0].value === 1 && h[0].breeders === 5);
+      check('one point per litter, numbered in order', lits.length === seen.length && lits.every((p, i) => p.litter === i + 1));
+      check('each litter\'s point matches diversity right after it',
+        lits.every((p, i) => Math.abs(p.value - seen[i]) < 1e-12), lits.map((p, i) => p.value.toFixed(4) + '/' + seen[i].toFixed(4)).join(' '));
+      check('ends with now, after the last retirement', h[h.length - 1].kind === 'now' && h[h.length - 1].value === f.diversity());
+      check('each litter knows its parents and inbreeding',
+        lits.every(p => f.get(p.sire).sex === 'ram' && f.get(p.dam).sex === 'ewe' && p.inbreeding === f.offspringInbreeding(p.sire, p.dam)));
+
+      // A save from before litters and retirements were timed still gives a history.
+      const old = JSON.parse(JSON.stringify(f.exportState()));
+      for (const r of old.sheep) { delete r.retiredAt; for (const l of r.litters) delete l.at; }
+      const g = E.createFlock({});
+      g.importState(old);
+      const gh = g.diversityHistory();
+      check('older saves: same points, every value a number',
+        gh.length === h.length && gh.every(p => typeof p.value === 'number' && p.value > 0 && p.value <= 1));
+      check('older saves: the start and now are exact', gh[0].value === h[0].value && gh[gh.length - 1].value === h[h.length - 1].value);
+
+      f.undoLastBreeding();
+      check('undo drops the litter from the history', f.diversityHistory().filter(p => p.kind === 'litter').length === seen.length - 1);
+      const lone = E.createFlock({ rng: E.mulberry32(22) });
+      lone.addSheep({ sex: 'ram' });
+      lone.addSheep({ sex: 'ewe' });
+      const lh = lone.diversityHistory();
+      check('no litters yet: just the start and now', lh.length === 2 && lh[0].kind === 'start' && lh[1].kind === 'now');
+    }
+
+    // ------------------------------------------------------------------
     heading('Predictions from guesses');
     const guess = over => Object.assign(E.blankGuess(), over);
     const known = {

@@ -97,7 +97,6 @@
     color: var(--ink);
   }
   .check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-  .show-retired { white-space: nowrap; }
   .tag {
     display: inline-block; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 999px;
     font-size: 11px; color: var(--muted); line-height: 18px; white-space: nowrap;
@@ -143,15 +142,19 @@
   }
   .flock-main { overflow: auto; min-width: 0; }
   .side { overflow: auto; background: var(--surface); border-left: 1px solid var(--line); }
+  /* Which sheep show; their order and what to do; then how many there are. */
   .toolbar {
     position: sticky; top: 0; z-index: 5;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-    padding: 14px 20px 10px; background: var(--bg);
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 14px 20px 12px; background: var(--bg);
   }
-  .toolbar .spacer { flex: 1; }
+  .tb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
   .sort-group { display: inline-flex; align-items: center; gap: 4px; }
+  .tb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
   .btn-icon { width: 32px; padding: 0; }
-  .flock-count { padding: 0 20px 10px; color: var(--muted); font-size: 13px; }
+  .flock-count { min-width: 0; color: var(--muted); font-size: 13px; }
+  .flock-count .link { color: var(--ink-2); font-weight: 500; }
+  .flock-count .link:hover { color: var(--ink); }
   .flock-count .diversity {
     padding: 0; border: 0; background: none; color: inherit;
     text-decoration: underline dotted; text-underline-offset: 3px; cursor: help;
@@ -833,6 +836,41 @@
   }
   .pd-node.key { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 
+  /* ---------- flock history ---------- */
+  .hist { max-width: 1040px; margin: 0 auto; padding: 32px 24px 80px; }
+  .hist-head h1 { font-size: 30px; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 22px 0 0; }
+  .tile { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  .tile-label { font-size: 12px; color: var(--muted); }
+  .tile-value { margin: 2px 0; font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+  .tile-sub { font-size: 12px; color: var(--muted); }
+  .hist-empty { margin: 28px 0; padding: 28px; border: 1px dashed var(--line-strong); border-radius: 12px; text-align: center; color: var(--muted); }
+  .hist-sec { margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--line); }
+  .hist-sec h2 { font-size: 20px; letter-spacing: -0.01em; margin-bottom: 6px; }
+  .hist-sec > p { margin: 0 0 14px; max-width: 72ch; color: var(--ink-2); }
+  .multiples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .hist-card { margin: 0; padding: 14px 14px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .hist-card figcaption { margin-bottom: 4px; font-size: 13.5px; }
+  .hist-note { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+  .hist-sec .chart-table { margin-top: 12px; }
+  .hist-sec .chart-table > div { max-height: 320px; }
+  .hist .chart-tip { width: max-content; max-width: 280px; white-space: normal; line-height: 1.5; }
+  .hist .chart-tip .swatch { vertical-align: -2px; }
+  .hist .chart-tip .tt-hint { margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+  .hist-svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+  .hist-svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .hist-svg .hc-title { fill: var(--ink); font-size: 12.5px; font-weight: 600; }
+  .hist-svg .hc-end { fill: var(--ink); font-size: 12px; font-weight: 650; }
+  .hist-svg .hc-grid { stroke: var(--line); }
+  .hist-svg .hc-axis { stroke: var(--line-strong); }
+  .hist-svg .hc-dot { fill: var(--ink-2); fill-opacity: 0.4; stroke: var(--surface); stroke-width: 1.5; }
+  .hist-svg .hc-dot.on { fill-opacity: 1; }
+  .hist-svg .hc-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .hist-svg .hc-avg { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+  .hist-svg .hc-avg.on { stroke: var(--ink); stroke-width: 1; r: 6; }
+  .hist-svg .hc-cross { stroke: var(--line-strong); }
+  .hist-svg .hc-ring { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+
   /* ---------- small screens ---------- */
   @media (max-width: 900px) {
     .view-flock { display: block; height: auto; }
@@ -853,6 +891,10 @@
     .badge { display: block; width: max-content; margin: 1px 0 0; padding: 0 5px; font-size: 9px; line-height: 13px; }
   }
   @media (max-width: 700px) {
+    .hist { padding: 20px 16px 60px; }
+    .hist-head h1 { font-size: 24px; }
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .multiples { grid-template-columns: minmax(0, 1fr); }
     .file-actions .file-toggle { display: inline-flex; }
     .file-menu {
       display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
@@ -865,7 +907,7 @@
   }
   @media (max-width: 560px) {
     .topbar { gap: 10px; padding: 0 12px; }
-    .toolbar, .flock-count, .grid { padding-left: 16px; padding-right: 16px; }
+    .toolbar, .grid { padding-left: 16px; padding-right: 16px; }
     .pick-banner, .goal-line, .select-bar { margin-left: 16px; margin-right: 16px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
     .side-body { padding: 16px; }
@@ -890,6 +932,11 @@
     .narrow-only { display: inline; }
     .tab { padding: 0 8px; }
   }
+  @media (max-width: 400px) {
+    .topbar { gap: 6px; }
+    .tabs { gap: 0; }
+    .tab { padding: 0 6px; }
+  }
 </style>
 </head>
 <body>
@@ -897,6 +944,7 @@
   <div class="brand">Sheep <span class="wide-only">Genetics </span>Sandbox<span class="badge" id="fantasy-badge" hidden title="This flock has made-up fantasy genes">Fantasy</span></div>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" data-view="flock">Flock</button>
+    <button class="tab" role="tab" data-view="history">History</button>
     <button class="tab" role="tab" data-view="guide"><span class="wide-only">Genetics guide</span><span class="narrow-only">Guide</span></button>
   </nav>
   <div class="file-actions" id="file-actions">
@@ -914,23 +962,27 @@
   <section id="view-flock" class="view-flock">
     <div class="flock-main">
       <div class="toolbar">
-        <div class="seg" role="group" aria-label="Show">
-          <button data-sex="all">All</button><button data-sex="ram">Rams</button><button data-sex="ewe">Ewes</button>
+        <div class="tb-row">
+          <div class="seg" role="group" aria-label="Show">
+            <button data-sex="all">All</button><button data-sex="ram">Rams</button><button data-sex="ewe">Ewes</button>
+          </div>
+          <button class="btn star-filter" id="star-filter" data-act="star-filter" aria-pressed="false" title="Show only starred sheep">★ Starred</button>
+          <label class="field">Looks <select id="look-filter"></select></label>
+          <label class="field">Guessed to carry <select id="allele-filter"></select></label>
         </div>
-        <button class="btn star-filter" id="star-filter" data-act="star-filter" aria-pressed="false" title="Show only starred sheep">★ Starred</button>
-        <label class="field">Guessed to carry <select id="allele-filter"></select></label>
-        <span class="sort-group">
-          <label class="field">Sort <select id="sort-select"></select></label>
-          <button class="btn btn-icon" id="sort-dir" data-act="sort-dir" aria-label="Reverse sort order">↑</button>
-        </span>
-        <label class="check show-retired"><input type="checkbox" id="show-retired"> Show retired</label>
-        <span class="spacer"></span>
-        <button class="btn select-btn" id="select-btn" data-act="select-mode" aria-pressed="false" title="Select several sheep to retire at once">Select</button>
-        <button class="btn" id="check-all-btn" data-act="check-all">Check sure guesses</button>
-        <button class="btn" id="undo-btn" data-act="undo">Undo last breeding</button>
-        <button class="btn btn-primary" id="add-btn" data-act="add">+ Random sheep</button>
+        <div class="tb-row">
+          <span class="sort-group">
+            <label class="field">Sort <select id="sort-select"></select></label>
+            <button class="btn btn-icon" id="sort-dir" data-act="sort-dir" aria-label="Reverse sort order">↑</button>
+          </span>
+          <div class="tb-actions">
+            <button class="btn" id="check-all-btn" data-act="check-all" hidden title="Flag any guess marked sure that is wrong, on every sheep">Check sure guesses</button>
+            <button class="btn select-btn" id="select-btn" data-act="select-mode" aria-pressed="false" title="Select several sheep to retire at once">Select</button>
+            <button class="btn btn-primary" id="add-btn" data-act="add">+ Random sheep</button>
+          </div>
+        </div>
+        <div class="flock-count" id="flock-count"></div>
       </div>
-      <div class="flock-count" id="flock-count"></div>
       <div class="goal-line" id="goal-line" hidden></div>
       <div class="pick-banner" id="pick-banner" role="status" hidden></div>
       <div class="grid" id="grid"></div>
@@ -944,6 +996,7 @@
       <div class="side-body" id="side-body"></div>
     </aside>
   </section>
+  <section id="view-history" hidden></section>
   <section id="view-guide" hidden></section>
 </main>
 
@@ -969,6 +1022,7 @@
 <script src="js/engine.js"></script>
 <script src="js/display.js"></script>
 <script src="js/guide.js"></script>
+<script src="js/history.js"></script>
 <script src="js/tip.js"></script>
 <script src="js/ui.js"></script>
 </body>

@@ -992,7 +992,7 @@
       'variety going; sort by <b>Related to flock</b> to find these sheep. The flock\'s <b>diversity</b>, next to the sheep count, is 100% minus how ' +
       'inbred a lamb of two breeding sheep picked at random would be. It starts at 100% with unrelated founders and tends to fall over ' +
       'the generations as more of the flock descends from the same few sheep. Adding random sheep raises it, and so does retiring sheep ' +
-      'whose genes are already common.</p>';
+      'whose genes are already common. The <b>History</b> tab charts it litter by litter, next to how inbred each litter was.</p>';
 
     const detective =
       '<h3>What a sheep\'s look proves</h3>' +
