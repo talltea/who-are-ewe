@@ -120,7 +120,8 @@ const seedPlayedFlock = p => p.js(`(() => {
   }
   localStorage.setItem('${KEY}', JSON.stringify({ format: 'sheep-genetics-sandbox', version: 2, savedAt: new Date().toISOString(),
     flock: f.exportState(), notes: {}, goal: { text: '', alleles: {} }, ui: { view: 'history' } }));
-  return { sheep: f.list().length, litters: f.diversityHistory().filter(h => h.kind === 'litter').length };
+  return { sheep: f.list().length, litters: f.diversityHistory().filter(h => h.kind === 'litter').length,
+    coats: new Set(f.list().map(r => E.colorKey(r.phenotype))).size };
 })()`);
 
 try {
@@ -138,6 +139,7 @@ try {
 
   check('History opens with a birth record and fleece charts', await view(p, 'history') &&
     await p.js(`!!document.querySelector('.br-grid .br-sheep') && document.querySelectorAll('[data-chart="diameter"] .hc-dot').length > 8`));
+  check('the collection has every coat of a classic flock', await p.js(`document.querySelectorAll('.dex-coats .dex-item').length`) === 17);
   check('the guide opens', await view(p, 'guide') && await p.js(`document.getElementById('view-guide').textContent.length > 2000`));
   check('back to the flock', await view(p, 'flock'));
 
@@ -146,6 +148,10 @@ try {
   await p.go(PAGE);
   check('a played flock loads into History', await p.js(`document.querySelectorAll('.br-sheep').length`) === seeded.sheep);
   check('every litter is in the birth record', await p.js(`document.querySelectorAll('.br-cell:not(.br-added)').length`) === seeded.litters);
+  check('the collection has every coat of a fantasy flock', await p.js(`document.querySelectorAll('.dex-coats .dex-item').length`) === 121);
+  check('and counts each coat the flock has had', await p.js(`document.querySelectorAll('.dex-coats button.dex-item').length`) === seeded.coats);
+  check('a found look opens its first sheep', await p.js(`document.querySelector('.dex button.dex-item').click(); !document.getElementById('view-flock').hidden`));
+  await view(p, 'history');
 
   await p.size(390, 844);
   await p.go(PAGE);

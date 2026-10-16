@@ -1,8 +1,8 @@
 /* Who Are Ewe? Flock history.
  *
- * How the flock has changed, litter by litter: every sheep in the order it
- * joined the flock, the fleece of the breeding flock, its diversity, and
- * each litter's inbreeding. It reads only what the player can see anyway:
+ * How the flock has changed, litter by litter: every look it has had, every
+ * sheep in the order it joined the flock, the fleece of the breeding flock,
+ * its diversity, and each litter's inbreeding. It reads only what the player can see anyway:
  * looks, measured fleece, pedigrees and litters.
  */
 (function () {
@@ -49,7 +49,54 @@
         where.set(r.id, e.kind === 'start' ? 'founder' : e.kind === 'added' ? 'added after litter ' + e.after : 'litter ' + e.litter.litter);
       }
     }
-    return { sheep, history, litters, record, at, where };
+    return { sheep, history, litters, record, at, where, dex: collection(sheep) };
+  }
+
+  const PATTERNS = ['solid', 'badgerface', 'mouflon', 'mixed'];
+  const PATTERN_HEAD = { solid: 'Solid', badgerface: 'Badgerface', mouflon: 'Mouflon', mixed: 'Mixed' };
+
+  // Every look the flock can collect, and which sheep have had each: every
+  // coat, each sex horned and polled, and each fantasy trait. Coats come in
+  // rows of one color and shade, with a plain and a spotted entry for each
+  // pattern; white hides all of that, so it's one entry. An entry is
+  // { name, look, count, first }: look is what to draw once it's found,
+  // first the first sheep to have it, in the order they joined the flock.
+  function collection(sheep) {
+    const has = key => flock.activeGenes().some(g => g.key === key);
+    const coat = look => ({ name: D.title(look), look, key: E.colorKey(look) });
+    const rows = [{ label: 'White', entries: [coat({ color: 'white', pattern: 'none', spotted: false })] }];
+    const shades = has('dilution') ? ['full', 'dusk', 'frost'] : ['full'];
+    for (const color of ['black', 'brown'].concat(has('hue') ? ['rose', 'blue', 'violet'] : [])) {
+      for (const shade of shades) {
+        const name = D.COLOR_NAME[color];
+        rows.push({
+          label: shade === 'full' ? name : D.SHADE_NAME[shade] + ' ' + name.toLowerCase(),
+          entries: PATTERNS.flatMap(pattern => [false, true].map(spotted => coat({ color, pattern, spotted, shade }))),
+        });
+      }
+    }
+    // Other entries draw a white sheep with just that trait.
+    const trait = (name, test, extra) => ({ name, test, look: Object.assign({ color: 'white', pattern: 'none', spotted: false }, extra) });
+    const horns = ['ram', 'ewe'].flatMap(sex => [true, false].map(horned =>
+      trait((horned ? 'Horned ' : 'Polled ') + sex, p => p.sex === sex && !!p.horned === horned, { sex, horned })));
+    const fantasy = [
+      has('speckle') && trait('Speckled', p => p.speckled, { speckled: true }),
+      has('lantern') && trait('Glowing', p => p.glow, { glow: true }),
+      flock.fantasy && trait('Gilded', p => p.gilded, { gilded: true }),
+      has('opal') && trait('Patchy opal', p => p.opal === 'patchy', { opal: 'patchy' }),
+      has('opal') && trait('Opal', p => p.opal === 'full', { opal: 'full' }),
+    ].filter(Boolean);
+
+    const inOrder = sheep.slice().sort((a, b) => a.born - b.born);
+    const byCoat = new Map();
+    for (const r of inOrder) {
+      const k = E.colorKey(r.phenotype);
+      byCoat.set(k, (byCoat.get(k) || []).concat(r));
+    }
+    const tally = (e, had) => Object.assign(e, { count: had.length, first: had[0] || null });
+    for (const row of rows) for (const e of row.entries) tally(e, byCoat.get(e.key) || []);
+    for (const e of horns.concat(fantasy)) tally(e, inOrder.filter(r => e.test(r.phenotype)));
+    return { rows, horns, fantasy };
   }
 
   // Every sheep in the order it joined the flock: the starting founders,
@@ -413,6 +460,43 @@
         : 'Every look so far was already among the founders.');
   }
 
+  // ------------------------------------------------------- collection
+
+  const foundIn = list => list.filter(e => e.first).length;
+
+  // A found look opens the first sheep to have it. One not found yet is a
+  // dashed circle.
+  function dexItem(e) {
+    if (!e.first) {
+      const tip = 'Not found yet: ' + e.name;
+      return '<span class="dex-item" title="' + esc(tip) + '">' + D.emptySwatch('sm', esc(tip)) + '</span>';
+    }
+    const r = e.first;
+    const tip = e.name + ' · ' + e.count + ' sheep\nFirst: ' + r.name + ', ' + data.where.get(r.id);
+    return '<button class="dex-item" data-open="' + r.id + '" title="' + esc(tip) + '">' + D.swatch(e.look, 'sm') + '</button>';
+  }
+
+  function dexSection() {
+    const { rows, horns, fantasy } = data.dex;
+    const coats = rows.flatMap(row => row.entries);
+    const all = coats.concat(horns, fantasy);
+    const n = foundIn(all);
+    const head = (title, list) => '<h3>' + title + ' <span>' + foundIn(list) + ' of ' + list.length + '</span></h3>';
+    const grid = '<div class="dex-coats"><span></span>' +
+      PATTERNS.map(k => '<span class="dex-head">' + PATTERN_HEAD[k] + '</span>').join('') +
+      rows.map(row => '<span class="dex-label">' + esc(row.label) + '</span>' + row.entries.map(dexItem).join('')).join('') + '</div>';
+    const list = items => '<ul class="dex-list">' + items.map(e => '<li' + (e.first ? '' : ' class="is-missing"') + '>' + dexItem(e) +
+      esc(e.name) + (e.first ? ' <span class="muted">· ' + e.count + '</span>' : '') + '</li>').join('') + '</ul>';
+    return '<section class="hist-sec"><h2>Collection</h2><p>Every look your flock has had, founders and retired sheep included. ' +
+      (n === all.length ? 'You\'ve found <b>all ' + n + '</b>.' : 'You\'ve found <b>' + n + ' of ' + all.length + '</b>.') + '</p>' +
+      '<figure class="hist-card"><div class="dex">' +
+      '<div class="dex-block">' + head('Coats', coats) + grid + '<p class="hist-note">Each pattern has a plain coat, then a spotted one.</p></div>' +
+      '<div class="dex-block">' + head('Horns', horns) + list(horns) +
+      (fantasy.length ? head('Fantasy traits', fantasy) + list(fantasy) : '') + '</div>' +
+      '</div><p class="hist-note">Point at a look to see who had it first, and click to open that sheep.' +
+      (n < all.length ? ' Dashed circles are looks your flock hasn\'t had yet.' : '') + '</p></figure></section>';
+  }
+
   // ------------------------------------------------------------ tables
 
   // The breeding flock's average fleece at the start, after each litter, and now.
@@ -460,7 +544,7 @@
       tile('New looks', new Set([].concat(...found.map(([, words]) => words))).size,
         latest ? 'latest: ' + esc(latest[1][latest[1].length - 1]) + ', ' + data.where.get(latest[0]) : 'none yet') +
       tile('Diversity', now.value === null ? '—' : pct(now.value), breeding(now.breeders)) +
-      '</div>';
+      '</div>' + dexSection();
     if (!data.litters.length) {
       return html + '<p class="hist-empty">No litters yet. Breed a few, then come back to see how your flock changes.</p></div>';
     }

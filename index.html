@@ -888,6 +888,20 @@
   .br-lost { display: inline-flex; padding: 2px; }
   .br-new { margin-top: 3px; padding-left: 3px; color: var(--ink); font-size: 11.5px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
   .br .hist-note { margin-top: 18px; }
+  .dex { display: flex; flex-wrap: wrap; gap: 24px 56px; padding: 4px 0 6px; }
+  .dex-block h3 { margin: 0 0 8px; font-size: 13.5px; }
+  .dex-block h3 span { margin-left: 4px; color: var(--muted); font-weight: 400; }
+  .dex-block .dex-list + h3 { margin-top: 20px; }
+  .dex-coats { display: grid; grid-template-columns: max-content repeat(8, 28px); align-items: center; }
+  .dex-head { grid-column: span 2; padding-bottom: 4px; color: var(--muted); font-size: 10.5px; text-align: center; white-space: nowrap; }
+  .dex-label { grid-column: 1; padding-right: 12px; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+  .dex-item { display: inline-flex; justify-content: center; padding: 3px; border: 0; border-radius: 50%; background: none; }
+  button.dex-item { cursor: pointer; }
+  button.dex-item:hover { box-shadow: 0 0 0 1.5px var(--ink); }
+  .dex-item .swatch { pointer-events: none; }
+  .dex-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .dex-list li { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .dex-list li.is-missing { color: var(--muted); }
 
   /* ---------- small screens ---------- */
   @media (max-width: 900px) {
@@ -1043,7 +1057,7 @@
   // Raise this with every change you publish. Browsers keep scripts for a
   // while, and a new page running an old cached script breaks; a new number
   // makes them fetch every script fresh, together.
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   for (const name of ['engine', 'display', 'guide', 'history', 'tip', 'ui']) {
     const script = document.createElement('script');
     script.src = 'js/' + name + '.js?v=' + VERSION;
